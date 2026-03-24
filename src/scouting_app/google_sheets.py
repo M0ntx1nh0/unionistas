@@ -39,12 +39,15 @@ def get_service_account_email() -> str:
     return str(service_account_info.get("client_email", ""))
 
 
-def get_google_sheets_client() -> gspread.Client:
-    credentials = Credentials.from_service_account_info(
+def get_google_credentials() -> Credentials:
+    return Credentials.from_service_account_info(
         _get_service_account_info(),
         scopes=GOOGLE_SHEETS_SCOPES,
     )
-    return gspread.authorize(credentials)
+
+
+def get_google_sheets_client() -> gspread.Client:
+    return gspread.authorize(get_google_credentials())
 
 
 def read_google_sheet() -> pd.DataFrame:

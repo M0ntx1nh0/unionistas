@@ -210,6 +210,7 @@ def build_player_summary(player_df: pd.DataFrame) -> dict[str, str | int]:
         "verdict_scouts": " | ".join(verdict_scouts) if verdict_scouts else "-",
         "last_seen": last_seen_str,
         "team": latest.get("equipo") or "-",
+        "competition": latest.get("competicion") or "-",
         "position": latest.get("demarcacion") or "-",
         "primary_position": primary_position_label,
         "position_scouts": " | ".join(position_scouts) if position_scouts else "-",

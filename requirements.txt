@@ -2,3 +2,5 @@ streamlit>=1.43,<2.0
 pandas>=2.2,<3.0
 gspread>=6.1,<7.0
 google-auth>=2.38,<3.0
+matplotlib>=3.9,<4.0
+mplsoccer>=1.4,<2.0

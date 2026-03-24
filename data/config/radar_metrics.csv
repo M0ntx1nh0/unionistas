@@ -1,0 +1,91 @@
+radar_group,category,metric_key,metric_label,order,active
+delantero,ataque,goals,Goles,1,1
+delantero,ataque,non_penalty_goal,Goles sin penalti,2,1
+delantero,ataque,xg_shot,xG,3,1
+delantero,ataque,shots,Tiros,4,1
+delantero,ataque,touch_in_box_avg,Toques area/90,5,1
+delantero,posesion,passes_avg,Pases/90,6,1
+delantero,posesion,accurate_passes_percent,% pase,7,1
+delantero,posesion,progressive_pass_avg,Pases prog./90,8,1
+delantero,posesion,dribbles_avg,Regates/90,9,1
+delantero,posesion,progressive_run_avg,Conducciones prog./90,10,1
+delantero,defensa,duels_avg,Duelos/90,11,1
+delantero,defensa,duels_won,% duelos,12,1
+delantero,defensa,offensive_duels_avg,Duelos ofens./90,13,1
+delantero,defensa,aerial_duels_avg,Aereos/90,14,1
+delantero,defensa,aerial_duels_won,% aereos,15,1
+extremo_mediapunta,ataque,goals,Goles,1,1
+extremo_mediapunta,ataque,assists,Asistencias,2,1
+extremo_mediapunta,ataque,xg_shot,xG,3,1
+extremo_mediapunta,ataque,xg_assist,xA,4,1
+extremo_mediapunta,ataque,touch_in_box_avg,Toques area/90,5,1
+extremo_mediapunta,posesion,passes_avg,Pases/90,6,1
+extremo_mediapunta,posesion,accurate_passes_percent,% pase,7,1
+extremo_mediapunta,posesion,passes_to_final_third_avg,Pases ultimo tercio/90,8,1
+extremo_mediapunta,posesion,progressive_pass_avg,Pases prog./90,9,1
+extremo_mediapunta,posesion,progressive_run_avg,Conducciones prog./90,10,1
+extremo_mediapunta,defensa,dribbles_avg,Regates/90,11,1
+extremo_mediapunta,defensa,successful_dribbles_percent,% regate,12,1
+extremo_mediapunta,defensa,duels_avg,Duelos/90,13,1
+extremo_mediapunta,defensa,offensive_duels_won,% duelo ofens.,14,1
+extremo_mediapunta,defensa,foul_suffered_avg,Faltas recibidas/90,15,1
+mediocentro_pivote,ataque,assists,Asistencias,1,1
+mediocentro_pivote,ataque,xg_assist,xA,2,1
+mediocentro_pivote,ataque,shots,Tiros,3,1
+mediocentro_pivote,ataque,touch_in_box_avg,Toques area/90,4,1
+mediocentro_pivote,ataque,progressive_run_avg,Conducciones prog./90,5,1
+mediocentro_pivote,posesion,passes_avg,Pases/90,6,1
+mediocentro_pivote,posesion,accurate_passes_percent,% pase,7,1
+mediocentro_pivote,posesion,forward_passes_avg,Pases adelante/90,8,1
+mediocentro_pivote,posesion,passes_to_final_third_avg,Pases ultimo tercio/90,9,1
+mediocentro_pivote,posesion,progressive_pass_avg,Pases prog./90,10,1
+mediocentro_pivote,defensa,duels_avg,Duelos/90,11,1
+mediocentro_pivote,defensa,defensive_duels_avg,Duelos def./90,12,1
+mediocentro_pivote,defensa,defensive_duels_won,% duelo def.,13,1
+mediocentro_pivote,defensa,interceptions_avg,Intercepciones/90,14,1
+mediocentro_pivote,defensa,successful_defensive_actions_avg,Acciones def./90,15,1
+central,ataque,goals,Goles,1,1
+central,ataque,shots,Tiros,2,1
+central,ataque,non_penalty_goal,Goles sin penalti,3,1
+central,ataque,touch_in_box_avg,Toques area/90,4,1
+central,ataque,aerial_duels_won,% aereos,5,1
+central,posesion,passes_avg,Pases/90,6,1
+central,posesion,accurate_passes_percent,% pase,7,1
+central,posesion,forward_passes_avg,Pases adelante/90,8,1
+central,posesion,progressive_pass_avg,Pases prog./90,9,1
+central,posesion,passes_to_final_third_avg,Pases ultimo tercio/90,10,1
+central,defensa,defensive_duels_avg,Duelos def./90,11,1
+central,defensa,defensive_duels_won,% duelo def.,12,1
+central,defensa,aerial_duels_avg,Aereos/90,13,1
+central,defensa,interceptions_avg,Intercepciones/90,14,1
+central,defensa,shot_block_avg,Bloqueos/90,15,1
+lateral_carrilero,ataque,assists,Asistencias,1,1
+lateral_carrilero,ataque,xg_assist,xA,2,1
+lateral_carrilero,ataque,touch_in_box_avg,Toques area/90,3,1
+lateral_carrilero,ataque,dribbles_avg,Regates/90,4,1
+lateral_carrilero,ataque,progressive_run_avg,Conducciones prog./90,5,1
+lateral_carrilero,posesion,passes_avg,Pases/90,6,1
+lateral_carrilero,posesion,accurate_passes_percent,% pase,7,1
+lateral_carrilero,posesion,forward_passes_avg,Pases adelante/90,8,1
+lateral_carrilero,posesion,passes_to_final_third_avg,Pases ultimo tercio/90,9,1
+lateral_carrilero,posesion,progressive_pass_avg,Pases prog./90,10,1
+lateral_carrilero,defensa,defensive_duels_avg,Duelos def./90,11,1
+lateral_carrilero,defensa,defensive_duels_won,% duelo def.,12,1
+lateral_carrilero,defensa,duels_avg,Duelos/90,13,1
+lateral_carrilero,defensa,interceptions_avg,Intercepciones/90,14,1
+lateral_carrilero,defensa,successful_defensive_actions_avg,Acciones def./90,15,1
+portero,ataque,save_percent,% paradas,1,1
+portero,ataque,clean_sheets,Porterias a cero,2,1
+portero,ataque,prevented_goals,Goles evitados,3,1
+portero,ataque,prevented_goals_avg,Goles evitados/90,4,1
+portero,ataque,xg_save_avg,xG save/90,5,1
+portero,posesion,passes_avg,Pases/90,6,1
+portero,posesion,accurate_passes_percent,% pase,7,1
+portero,posesion,forward_passes_avg,Pases adelante/90,8,1
+portero,posesion,progressive_pass_avg,Pases prog./90,9,1
+portero,posesion,back_pass_to_gk_avg,Cesiones recibidas/90,10,1
+portero,defensa,shots_against,Tiros recibidos,11,1
+portero,defensa,conceded_goals,Goles encajados,12,1
+portero,defensa,goalkeeper_exits_avg,Salidas/90,13,1
+portero,defensa,gk_aerial_duels_avg,Aereos portero/90,14,1
+portero,defensa,successful_defensive_actions_avg,Acciones def./90,15,1
