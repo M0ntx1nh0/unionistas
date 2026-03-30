@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import gspread
@@ -50,10 +51,46 @@ def get_google_sheets_client() -> gspread.Client:
     return gspread.authorize(get_google_credentials())
 
 
+def _clean_header_value(value: Any, index: int) -> str:
+    text = str(value or "")
+    text = text.replace("\n", " ")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or f"unnamed_{index}"
+
+
+def _make_headers_unique(headers: list[str]) -> list[str]:
+    counts: dict[str, int] = {}
+    unique_headers: list[str] = []
+    for header in headers:
+        occurrence = counts.get(header, 0) + 1
+        counts[header] = occurrence
+        if occurrence == 1:
+            unique_headers.append(header)
+        else:
+            unique_headers.append(f"{header}__{occurrence}")
+    return unique_headers
+
+
 def read_google_sheet() -> pd.DataFrame:
     config = _get_sheet_config()
     client = get_google_sheets_client()
     workbook = client.open_by_key(config["spreadsheet_id"])
     worksheet = workbook.worksheet(config["worksheet_name"])
-    rows = worksheet.get_all_records()
-    return pd.DataFrame(rows)
+    values = worksheet.get_all_values()
+    if not values:
+        return pd.DataFrame()
+
+    raw_headers = values[0]
+    headers = _make_headers_unique(
+        [_clean_header_value(header, index + 1) for index, header in enumerate(raw_headers)]
+    )
+
+    normalized_rows: list[list[str]] = []
+    width = len(headers)
+    for row in values[1:]:
+        padded_row = row[:width] + [""] * max(0, width - len(row))
+        if not any(str(cell).strip() for cell in padded_row):
+            continue
+        normalized_rows.append(padded_row)
+
+    return pd.DataFrame(normalized_rows, columns=headers)
