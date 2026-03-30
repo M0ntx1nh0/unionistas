@@ -2262,6 +2262,21 @@ def main() -> None:
         key="active_view",
         label_visibility="collapsed",
     )
+
+    objective_df: pd.DataFrame | None = None
+    objective_matches_df: pd.DataFrame | None = None
+    if selected_view in {"Dashboard", "Jugador"}:
+        try:
+            objective_df = get_objective_data()
+            objective_matches_df = get_objective_matches(df)
+        except FileNotFoundError:
+            objective_df = None
+            objective_matches_df = None
+        except Exception as exc:
+            st.warning(f"No se pudieron cargar los datos objetivos 1RFEF: {exc}")
+            objective_df = None
+            objective_matches_df = None
+
     if selected_view == "Dashboard":
         render_overview(filtered_df, df, objective_matches_df)
     elif selected_view == "Jugador":
