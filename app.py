@@ -54,7 +54,8 @@ def get_objective_data() -> pd.DataFrame:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_objective_matches(subjective_df: pd.DataFrame) -> pd.DataFrame:
+def get_objective_matches() -> pd.DataFrame:
+    subjective_df = get_data()
     objective_df = get_objective_data()
     return match_objective_players(subjective_df, objective_df)
 
@@ -2236,19 +2237,6 @@ def main() -> None:
         st.exception(exc)
         st.stop()
 
-    objective_df: pd.DataFrame | None = None
-    objective_matches_df: pd.DataFrame | None = None
-    try:
-        objective_df = get_objective_data()
-        objective_matches_df = get_objective_matches(df)
-    except FileNotFoundError:
-        objective_df = None
-        objective_matches_df = None
-    except Exception as exc:
-        st.warning(f"No se pudieron cargar los datos objetivos 1RFEF: {exc}")
-        objective_df = None
-        objective_matches_df = None
-
     filters = render_sidebar_filters(df)
     filtered_df = filter_reports(df, filters)
 
@@ -2268,7 +2256,7 @@ def main() -> None:
     if selected_view in {"Dashboard", "Jugador"}:
         try:
             objective_df = get_objective_data()
-            objective_matches_df = get_objective_matches(df)
+            objective_matches_df = get_objective_matches()
         except FileNotFoundError:
             objective_df = None
             objective_matches_df = None
