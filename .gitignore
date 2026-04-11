@@ -5,4 +5,5 @@ unionistas-1b7de8622f6a.json
 auth/
 .auth/
 .DS_Store
-
+data/raw/*.csv
+data/processed/*.csv

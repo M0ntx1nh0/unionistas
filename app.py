@@ -11,6 +11,24 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageOps
 
 from src.scouting_app.auth import render_login
+from src.scouting_app.calendar_data import (
+    build_calendar_interest,
+    competition_family,
+    resolve_team_key,
+    load_calendar_matches,
+    load_team_name_map,
+    refresh_calendar_matches,
+)
+from src.scouting_app.calendar_pdf import CalendarPdfSection, build_calendar_pdf
+from src.scouting_app.campogram_data import (
+    CampogramDataset,
+    get_campogram_ordered_names,
+    get_category_style,
+    get_consensus_style,
+    get_position_blocks,
+    build_campogram_dataset,
+    summarize_campogram,
+)
 from src.scouting_app.data_processing import (
     build_player_summary,
     filter_reports,
@@ -28,7 +46,7 @@ from src.scouting_app.objective_data import (
 
 
 st.set_page_config(
-    page_title="Unionistas Scouting",
+    page_title="Unionistas Scouting Lab",
     page_icon="⚽",
     layout="wide",
 )
@@ -40,7 +58,7 @@ COLOR_WHITE = "#F5F5F5"
 COLOR_GRAY = "#B8B8B8"
 COLOR_DARK_GRAY = "#4A4A4A"
 COLOR_GOLD = "#E7D21A"
-VIEWS = ["Dashboard", "Jugador", "Informes"]
+VIEWS = ["Dashboard", "Jugador", "Informes", "Calendario", "Campogramas"]
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -58,6 +76,46 @@ def get_objective_matches() -> pd.DataFrame:
     subjective_df = get_data()
     objective_df = get_objective_data()
     return match_objective_players(subjective_df, objective_df)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_calendar_matches() -> pd.DataFrame:
+    return load_calendar_matches()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_team_name_map() -> pd.DataFrame:
+    return load_team_name_map()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_calendar_team_logos() -> dict[tuple[str, str], str]:
+    try:
+        objective_df = get_objective_data()
+    except Exception:
+        return {}
+    if objective_df is None or objective_df.empty:
+        return {}
+
+    logo_map: dict[tuple[str, str], str] = {}
+    team_map_df = get_team_name_map()
+    for _, row in objective_df.iterrows():
+        logo = str(row.get("current_team_logo") or "").strip()
+        if not logo or logo == "No disponible":
+            continue
+
+        competition_key = competition_family(row.get("domestic_competition_name"))
+        for team_name in [row.get("current_team_name"), row.get("last_club_name")]:
+            normalized_name = resolve_team_key(team_name, row.get("domestic_competition_name"), team_map_df)
+            if not normalized_name:
+                continue
+            logo_map.setdefault((competition_key, normalized_name), logo)
+    return logo_map
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_campogram_dataset() -> CampogramDataset:
+    return build_campogram_dataset()
 
 
 def objective_dataset_label(dataset_key: str | None) -> str:
@@ -388,6 +446,89 @@ def apply_custom_theme() -> None:
             .report-card-block strong {{
                 color: #111111;
             }}
+            .campogram-position-card {{
+                background: rgba(255,255,255,0.78);
+                border: 1px solid rgba(255,255,255,0.78);
+                border-radius: 22px;
+                padding: 0.9rem 1rem 1rem 1rem;
+                box-shadow: 0 12px 26px rgba(10,10,10,0.05);
+                backdrop-filter: blur(10px);
+                height: 100%;
+            }}
+            .campogram-position-title {{
+                display: inline-block;
+                background: rgba(255,255,255,0.95);
+                border: 2px solid rgba(231, 210, 26, 0.72);
+                border-radius: 14px;
+                padding: 0.38rem 0.72rem;
+                color: #111111;
+                font-weight: 900;
+                margin-bottom: 0.7rem;
+                box-shadow: 0 6px 16px rgba(10,10,10,0.04);
+            }}
+            .campogram-player-card {{
+                border-radius: 16px;
+                padding: 0.58rem 0.7rem;
+                margin-bottom: 0.4rem;
+                border-left: 6px solid #b8b8b8;
+                box-shadow: 0 8px 18px rgba(10,10,10,0.04);
+            }}
+            .campogram-player-top {{
+                display:flex;
+                justify-content:space-between;
+                align-items:flex-start;
+                gap:0.55rem;
+                margin-bottom:0.18rem;
+            }}
+            .campogram-player-name {{
+                color:#111111;
+                font-weight:900;
+                font-size:0.98rem;
+                line-height:1.05;
+                margin-bottom:0.08rem;
+            }}
+            .campogram-player-meta {{
+                color:#4a4a4a;
+                font-size:0.82rem;
+                line-height:1.2;
+            }}
+            .campogram-player-submeta {{
+                color:#666666;
+                font-size:0.76rem;
+                margin-top:0.18rem;
+            }}
+            .campogram-badge {{
+                display:inline-block;
+                border-radius:999px;
+                padding:0.22rem 0.62rem;
+                font-size:0.76rem;
+                font-weight:800;
+                border:1px solid rgba(0,0,0,0.08);
+                white-space:nowrap;
+            }}
+            .campogram-field {{
+                background:
+                    radial-gradient(circle at center, rgba(255,255,255,0.06), transparent 45%),
+                    linear-gradient(180deg, rgba(34,139,34,0.16), rgba(12,93,36,0.18));
+                border: 1px solid rgba(255,255,255,0.55);
+                border-radius: 28px;
+                padding: 1rem 1rem 1.15rem 1rem;
+                box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 14px 28px rgba(10,10,10,0.05);
+                position: relative;
+                overflow: hidden;
+            }}
+            .campogram-field:before {{
+                content: "";
+                position: absolute;
+                inset: 0.9rem;
+                border: 2px solid rgba(255,255,255,0.45);
+                border-radius: 24px;
+                pointer-events: none;
+            }}
+            .campogram-field-row {{
+                position: relative;
+                z-index: 1;
+            }}
             .stTabs [data-baseweb="tab-list"] {{
                 gap: 0.5rem;
             }}
@@ -417,7 +558,7 @@ def render_header() -> None:
             """
             <div class="unionistas-hero">
                 <div class="unionistas-kicker">Unionistas de Salamanca CF</div>
-                <h1 class="unionistas-title">Scouting Dashboard</h1>
+                <h1 class="unionistas-title">Unionistas Scouting Lab</h1>
                 <div class="unionistas-copy">
                     Seguimiento centralizado de informes, veredictos y actividad del equipo de Scouting
                 </div>
@@ -743,6 +884,13 @@ def render_subjective_metric_card(label: str, value: str, detail: str | None = N
     )
 
 
+def _scout_initials(name: object) -> str:
+    tokens = [token for token in str(name or "").strip().split() if token]
+    if not tokens:
+        return ""
+    return "".join(token[0].upper() for token in tokens[:3])
+
+
 def render_scout_activity_panel(player_df: pd.DataFrame, mode: str) -> None:
     if player_df.empty or "marca_temporal" not in player_df.columns or "ojeador" not in player_df.columns:
         st.info("No hay datos suficientes para este bloque.")
@@ -757,16 +905,15 @@ def render_scout_activity_panel(player_df: pd.DataFrame, mode: str) -> None:
         panel_df = panel_df.dropna(subset=["veredicto"]).copy()
         title = "Valoraciones por scout y fecha"
         value_column = "veredicto"
-        text_column = "veredicto"
+        y_order = ["A+", "A", "B", "C", "D", "E", "Seguir Valorando", "Filial/Juvenil DH"]
         color_scale = alt.Scale(
-            domain=["A+", "A", "B", "C", "D", "E", "Seguir Valorando", "Filial/Juvenil DH"],
+            domain=y_order,
             range=["#0f8a3b", "#55a630", "#d4b000", "#f08c00", "#d9480f", "#c1121f", "#f08c00", "#7b2cbf"],
         )
     else:
         panel_df = panel_df.dropna(subset=["demarcacion_principal"]).copy()
         title = "Posición principal por scout y fecha"
         value_column = "demarcacion_principal"
-        text_column = "demarcacion_short"
         short_labels = {
             "Portero": "POR",
             "Central": "CEN",
@@ -788,9 +935,7 @@ def render_scout_activity_panel(player_df: pd.DataFrame, mode: str) -> None:
             "Delantero Centro": "DC",
             "Segundo punta": "SP",
         }
-        panel_df["demarcacion_short"] = panel_df["demarcacion_principal"].map(short_labels).fillna(
-            panel_df["demarcacion_principal"].astype(str).str.slice(0, 3).str.upper()
-        )
+        y_order = panel_df["demarcacion_principal"].dropna().astype(str).drop_duplicates().tolist()
         color_scale = alt.Scale(scheme="set2")
 
     if panel_df.empty:
@@ -799,11 +944,37 @@ def render_scout_activity_panel(player_df: pd.DataFrame, mode: str) -> None:
 
     panel_df = panel_df.sort_values(["marca_temporal", "ojeador"]).copy()
     panel_df["fecha_label"] = panel_df["marca_temporal"].dt.strftime("%d/%m/%y")
-    x_order = panel_df["fecha_label"].drop_duplicates().tolist()
-    y_order = panel_df["ojeador"].drop_duplicates().tolist()
+    panel_df["ojeador"] = panel_df["ojeador"].astype(str).str.strip()
+    panel_df["scout_initials"] = panel_df["ojeador"].map(_scout_initials)
+    panel_df["cell_display"] = panel_df["ojeador"]
 
-    base = alt.Chart(panel_df)
-    rect = base.mark_rect(cornerRadius=6).encode(
+    duplicate_counts = (
+        panel_df.groupby(["fecha_label", value_column])["ojeador"]
+        .transform("size")
+    )
+    panel_df.loc[duplicate_counts > 1, "cell_display"] = (
+        panel_df.loc[duplicate_counts > 1]
+        .groupby(["fecha_label", value_column])["scout_initials"]
+        .transform(lambda values: " / ".join(values))
+    )
+    panel_df["tooltip_scouts"] = (
+        panel_df.groupby(["fecha_label", value_column])["ojeador"]
+        .transform(lambda values: " | ".join(values))
+    )
+
+    chart_df = (
+        panel_df.groupby(["fecha_label", "marca_temporal", value_column], as_index=False)
+        .agg(
+            cell_display=("cell_display", "first"),
+            tooltip_scouts=("tooltip_scouts", "first"),
+        )
+        .sort_values("marca_temporal")
+    )
+
+    x_order = chart_df["fecha_label"].drop_duplicates().tolist()
+
+    base = alt.Chart(chart_df)
+    marks = base.mark_rect(cornerRadius=6, opacity=0.95, width=86, height=30).encode(
         x=alt.X(
             "fecha_label:N",
             sort=x_order,
@@ -811,30 +982,33 @@ def render_scout_activity_panel(player_df: pd.DataFrame, mode: str) -> None:
             axis=alt.Axis(labelAngle=-35, labelFontSize=10, labelLimit=90),
         ),
         y=alt.Y(
-            "ojeador:N",
+            f"{value_column}:N",
             sort=y_order,
             title=None,
             axis=alt.Axis(labelFontSize=11, labelLimit=150),
         ),
         color=alt.Color(f"{value_column}:N", scale=color_scale, legend=None),
         tooltip=[
-            alt.Tooltip("ojeador:N", title="Scout"),
+            alt.Tooltip("tooltip_scouts:N", title="Scout"),
             alt.Tooltip("marca_temporal:T", title="Fecha"),
             alt.Tooltip(f"{value_column}:N", title=("Veredicto" if mode == "verdict" else "Demarcación")),
         ],
     )
     text = base.mark_text(
         color="#111111",
-        fontSize=10,
+        fontSize=8,
         fontWeight="bold",
     ).encode(
         x=alt.X("fecha_label:N", sort=x_order),
-        y=alt.Y("ojeador:N", sort=y_order),
-        text=alt.Text(f"{text_column}:N"),
+        y=alt.Y(f"{value_column}:N", sort=y_order),
+        text=alt.Text("cell_display:N"),
     )
+    row_height = 46 if mode == "verdict" else 52
+    min_height = 145 if mode == "verdict" else 165
+    chart_height = max(min_height, len(y_order) * row_height)
     chart = (
-        (rect + text)
-        .properties(height=max(150, len(y_order) * 52))
+        (marks + text)
+        .properties(height=chart_height)
         .configure(background="#f8f7f2")
         .configure_view(strokeOpacity=0)
         .configure_axis(
@@ -1628,6 +1802,7 @@ def render_rankings_section(full_df: pd.DataFrame) -> None:
 def initialize_state() -> None:
     defaults = {
         "active_view": "Dashboard",
+        "dashboard_section": "Resumen",
         "filter_player": "Todos",
         "filter_scouts": [],
         "filter_primary_positions": [],
@@ -1831,88 +2006,102 @@ def render_overview(
     render_metrics(df)
     st.caption("Usa los accesos directos debajo de cada gráfico para abrir la vista filtrada de informes.")
 
-    col1, col2 = st.columns(2)
+    dashboard_section = st.segmented_control(
+        "Bloques del dashboard",
+        ["Resumen", "Competiciones", "Matching", "Rankings"],
+        key="dashboard_section",
+        label_visibility="collapsed",
+    )
 
-    with col1:
-        by_verdict = (
-            df["veredicto"]
-            .fillna("Sin veredicto")
-            .value_counts()
-            .rename_axis("veredicto")
-            .reset_index(name="informes")
-        )
-        render_labeled_bar_chart(
-            by_verdict,
-            category_column="veredicto",
-            value_column="informes",
-            title="Distribución por veredicto",
-        )
-        quick_verdict = st.selectbox(
-            "Abrir informes por veredicto",
-            options=["Selecciona un veredicto"] + by_verdict["veredicto"].tolist(),
-            index=0,
-            key="quick_verdict_select",
-            label_visibility="collapsed",
-        )
+    if dashboard_section == "Resumen":
+        col1, col2 = st.columns(2)
 
-    with col2:
-        by_scout = (
-            df["ojeador"]
-            .fillna("Sin ojeador")
-            .value_counts()
-            .rename_axis("ojeador")
-            .reset_index(name="informes")
-        )
-        render_labeled_bar_chart(
-            by_scout,
-            category_column="ojeador",
-            value_column="informes",
-            title="Informes por ojeador",
-            horizontal=True,
-        )
-        quick_scout = st.selectbox(
-            "Abrir informes por ojeador",
-            options=["Selecciona un ojeador"] + by_scout["ojeador"].tolist(),
-            index=0,
-            key="quick_scout_select",
-            label_visibility="collapsed",
-        )
+        with col1:
+            by_verdict = (
+                df["veredicto"]
+                .fillna("Sin veredicto")
+                .value_counts()
+                .rename_axis("veredicto")
+                .reset_index(name="informes")
+            )
+            render_labeled_bar_chart(
+                by_verdict,
+                category_column="veredicto",
+                value_column="informes",
+                title="Distribución por veredicto",
+            )
+            quick_verdict = st.selectbox(
+                "Abrir informes por veredicto",
+                options=["Selecciona un veredicto"] + by_verdict["veredicto"].tolist(),
+                index=0,
+                key="quick_verdict_select",
+                label_visibility="collapsed",
+            )
+            if quick_verdict != "Selecciona un veredicto":
+                queue_single_filter("filter_verdicts", quick_verdict)
 
-    if {"competicion", "nombre_jugador"}.issubset(df.columns):
-        by_competition = (
-            df.dropna(subset=["competicion", "nombre_jugador"])
-            .groupby("competicion", as_index=False)["nombre_jugador"]
-            .nunique()
-            .rename(columns={"nombre_jugador": "jugadores"})
-            .sort_values("jugadores", ascending=False)
-        )
+        with col2:
+            by_scout = (
+                df["ojeador"]
+                .fillna("Sin ojeador")
+                .value_counts()
+                .rename_axis("ojeador")
+                .reset_index(name="informes")
+            )
+            render_labeled_bar_chart(
+                by_scout,
+                category_column="ojeador",
+                value_column="informes",
+                title="Informes por ojeador",
+                horizontal=True,
+            )
+            quick_scout = st.selectbox(
+                "Abrir informes por ojeador",
+                options=["Selecciona un ojeador"] + by_scout["ojeador"].tolist(),
+                index=0,
+                key="quick_scout_select",
+                label_visibility="collapsed",
+            )
+            if quick_scout != "Selecciona un ojeador":
+                queue_single_filter("filter_scouts", quick_scout)
 
-        competition_options = by_competition["competicion"].tolist()
-        st.session_state["competition_chart_filter"] = [
-            item
-            for item in st.session_state["competition_chart_filter"]
-            if item in competition_options
-        ]
-        selected_competitions_for_chart = st.multiselect(
-            "Competiciones visibles en el gráfico",
-            options=competition_options,
-            key="competition_chart_filter",
-        )
-        if selected_competitions_for_chart:
-            by_competition = by_competition[
-                by_competition["competicion"].isin(selected_competitions_for_chart)
+    elif dashboard_section == "Competiciones":
+        if {"competicion", "nombre_jugador"}.issubset(df.columns):
+            by_competition = (
+                df.dropna(subset=["competicion", "nombre_jugador"])
+                .groupby("competicion", as_index=False)["nombre_jugador"]
+                .nunique()
+                .rename(columns={"nombre_jugador": "jugadores"})
+                .sort_values("jugadores", ascending=False)
+            )
+
+            competition_options = by_competition["competicion"].tolist()
+            st.session_state["competition_chart_filter"] = [
+                item
+                for item in st.session_state["competition_chart_filter"]
+                if item in competition_options
             ]
+            selected_competitions_for_chart = st.multiselect(
+                "Competiciones visibles en el gráfico",
+                options=competition_options,
+                key="competition_chart_filter",
+            )
+            if selected_competitions_for_chart:
+                by_competition = by_competition[
+                    by_competition["competicion"].isin(selected_competitions_for_chart)
+                ]
 
-        render_labeled_bar_chart(
-            by_competition,
-            category_column="competicion",
-            value_column="jugadores",
-            title="Jugadores unicos por competicion",
-            x_label_angle=-90,
-            value_axis_title="Jugadores únicos",
-        )
-        render_position_competition_heatmap(df)
-        render_rankings_section(full_df)
+            render_labeled_bar_chart(
+                by_competition,
+                category_column="competicion",
+                value_column="jugadores",
+                title="Jugadores unicos por competicion",
+                x_label_angle=-90,
+                value_axis_title="Jugadores únicos",
+            )
+            render_position_competition_heatmap(df)
+
+    elif dashboard_section == "Matching":
         render_scouting_matching_section(
             full_df,
             matches_df,
@@ -1936,11 +2125,8 @@ def render_overview(
             title="Matching 2RFEF",
         )
 
-    if quick_verdict != "Selecciona un veredicto":
-        queue_single_filter("filter_verdicts", quick_verdict)
-
-    if quick_scout != "Selecciona un ojeador":
-        queue_single_filter("filter_scouts", quick_scout)
+    else:
+        render_rankings_section(full_df)
 
 
 
@@ -2206,6 +2392,1449 @@ def render_reports_table(df: pd.DataFrame) -> None:
     panel_end()
 
 
+def _campogram_metric(label: str, value: object) -> None:
+    st.metric(label, value)
+
+
+CAMPOGRAM_POSITION_ORDER = [
+    "POR 1",
+    "LTD 2",
+    "DFC 4",
+    "DFC 5",
+    "LTI 3",
+    "MC 8",
+    "MC 6",
+    "ED 7",
+    "DC/MP 10",
+    "EI 11",
+    "DC 9",
+]
+
+CAMPOGRAM_CONSENSUS_DOMAIN = [
+    "Fichar",
+    "Duda",
+    "Seguir viendo",
+    "Descartar",
+    "Sin consenso",
+    "Sin informes",
+]
+
+CAMPOGRAM_CONSENSUS_COLORS = [
+    "#0f8a3b",
+    "#d4b000",
+    "#3b82f6",
+    "#d9480f",
+    "#7b2cbf",
+    "#8f8f8f",
+]
+
+
+def _campogram_consensus_chart(
+    scoped_players: pd.DataFrame,
+    *,
+    title: str | None = None,
+    height: int = 230,
+    compact: bool = False,
+) -> alt.Chart | None:
+    if scoped_players.empty:
+        return None
+
+    chart_df = (
+        scoped_players.groupby(["posicion_canonica", "consensus_label"], as_index=False)
+        .size()
+        .rename(columns={"size": "jugadores"})
+    )
+    if chart_df.empty:
+        return None
+
+    dynamic_positions = [
+        position for position in scoped_players["posicion_canonica"].dropna().unique().tolist()
+        if position not in CAMPOGRAM_POSITION_ORDER
+    ]
+    full_order = CAMPOGRAM_POSITION_ORDER + sorted(dynamic_positions)
+    totals_df = (
+        chart_df.groupby("posicion_canonica", as_index=False)["jugadores"]
+        .sum()
+        .rename(columns={"jugadores": "total_jugadores"})
+    )
+    totals_df["label"] = totals_df["total_jugadores"].apply(
+        lambda value: f"{int(value)} jugadores" if int(value) != 1 else "1 jugador"
+    )
+
+    bars = (
+        alt.Chart(chart_df)
+        .mark_bar(cornerRadiusTopLeft=8, cornerRadiusTopRight=8)
+        .encode(
+            x=alt.X(
+                "posicion_canonica:N",
+                title="Posición",
+                sort=full_order,
+                axis=alt.Axis(labelAngle=0, labelLimit=150),
+            ),
+            y=alt.Y(
+                "jugadores:Q",
+                title=None,
+                axis=alt.Axis(labels=False, ticks=False, grid=False, domain=False),
+                stack=True,
+            ),
+            color=alt.Color(
+                "consensus_label:N",
+                title="Valoración",
+                scale=alt.Scale(domain=CAMPOGRAM_CONSENSUS_DOMAIN, range=CAMPOGRAM_CONSENSUS_COLORS),
+            ),
+            tooltip=[
+                alt.Tooltip("posicion_canonica:N", title="Posición"),
+                alt.Tooltip("consensus_label:N", title="Valoración"),
+                alt.Tooltip("jugadores:Q", title="Jugadores"),
+            ],
+            order=alt.Order("consensus_label:N", sort="ascending"),
+        )
+    )
+    labels = (
+        alt.Chart(totals_df)
+        .mark_text(
+            dy=-10,
+            fontSize=11,
+            fontWeight="bold",
+            color="#4A4A4A",
+        )
+        .encode(
+            x=alt.X("posicion_canonica:N", sort=full_order),
+            y=alt.Y("total_jugadores:Q"),
+            text="label:N",
+        )
+    )
+
+    chart = (bars + labels).properties(height=height)
+    if title:
+        chart = chart.properties(title=title)
+
+    chart = chart.configure_view(strokeOpacity=0).configure_axis(
+        grid=False,
+        domain=False,
+        tickColor="transparent",
+    ).configure_legend(
+        orient="bottom",
+        direction="horizontal",
+        titleFontWeight="bold",
+        labelFontSize=11,
+    )
+    if compact:
+        chart = chart.configure_title(
+            fontSize=13,
+            fontWeight="bold",
+            anchor="start",
+            color="#111111",
+        ).configure_legend(
+            orient="bottom",
+            direction="horizontal",
+            titleFontSize=10,
+            labelFontSize=9,
+            symbolSize=80,
+        )
+    return chart
+
+
+def _campogram_overview_chart(scoped_players: pd.DataFrame) -> alt.Chart | None:
+    if scoped_players.empty:
+        return None
+
+    chart_df = (
+        scoped_players.groupby(["posicion_canonica", "consensus_label"], as_index=False)
+        .size()
+        .rename(columns={"size": "jugadores"})
+    )
+    if chart_df.empty:
+        return None
+
+    dynamic_positions = [
+        position for position in scoped_players["posicion_canonica"].dropna().unique().tolist()
+        if position not in CAMPOGRAM_POSITION_ORDER
+    ]
+    full_order = CAMPOGRAM_POSITION_ORDER + sorted(dynamic_positions)
+
+    totals_df = (
+        chart_df.groupby("posicion_canonica", as_index=False)["jugadores"]
+        .sum()
+        .rename(columns={"jugadores": "total_jugadores"})
+    )
+    totals_lookup = totals_df.set_index("posicion_canonica")["total_jugadores"].to_dict()
+    chart_df["position_axis_label"] = chart_df["posicion_canonica"].map(
+        lambda position: f"{position} · {int(totals_lookup.get(position, 0))}J"
+    )
+    ordered_axis_labels = [
+        f"{position} · {int(totals_lookup.get(position, 0))}J"
+        for position in full_order
+        if position in totals_lookup
+    ]
+    bars = alt.Chart(chart_df).mark_bar(
+        cornerRadiusTopLeft=4,
+        cornerRadiusTopRight=4,
+        size=9,
+    ).encode(
+        x=alt.X(
+            "position_axis_label:N",
+            sort=ordered_axis_labels,
+            title=None,
+            axis=alt.Axis(labelAngle=0, labelLimit=85, labelFontSize=9, ticks=False, domain=False),
+        ),
+        xOffset=alt.XOffset("consensus_label:N", sort=CAMPOGRAM_CONSENSUS_DOMAIN),
+        y=alt.Y(
+            "jugadores:Q",
+            title=None,
+            axis=alt.Axis(labels=False, ticks=False, grid=False, domain=False),
+        ),
+        color=alt.Color(
+            "consensus_label:N",
+            title="Valoración",
+            scale=alt.Scale(domain=CAMPOGRAM_CONSENSUS_DOMAIN, range=CAMPOGRAM_CONSENSUS_COLORS),
+            legend=None,
+        ),
+        tooltip=[
+            alt.Tooltip("posicion_canonica:N", title="Posición"),
+            alt.Tooltip("consensus_label:N", title="Valoración"),
+            alt.Tooltip("jugadores:Q", title="Jugadores"),
+        ],
+    )
+    labels_df = chart_df[chart_df["jugadores"] > 0].copy()
+    labels = alt.Chart(labels_df).mark_text(
+        dy=-6,
+        fontSize=9,
+        fontWeight="bold",
+        color="#111111",
+    ).encode(
+        x=alt.X("position_axis_label:N", sort=ordered_axis_labels),
+        xOffset=alt.XOffset("consensus_label:N", sort=CAMPOGRAM_CONSENSUS_DOMAIN),
+        y=alt.Y("jugadores:Q"),
+        text=alt.Text("jugadores:Q", format=".0f"),
+    )
+
+    return (
+        (bars + labels)
+        .properties(height=118)
+        .configure_view(strokeOpacity=0)
+        .configure_axis(grid=False, domain=False, tickColor="transparent")
+    )
+
+
+def render_campogram_overview_legend() -> None:
+    legend_df = pd.DataFrame(
+        {
+            "valoracion": CAMPOGRAM_CONSENSUS_DOMAIN,
+            "orden": list(range(len(CAMPOGRAM_CONSENSUS_DOMAIN))),
+        }
+    )
+    legend = (
+        alt.Chart(legend_df)
+        .mark_square(size=150)
+        .encode(
+            x=alt.X("orden:O", axis=None),
+            y=alt.value(34),
+            color=alt.Color(
+                "valoracion:N",
+                scale=alt.Scale(domain=CAMPOGRAM_CONSENSUS_DOMAIN, range=CAMPOGRAM_CONSENSUS_COLORS),
+                legend=None,
+            ),
+        )
+    )
+    labels = (
+        alt.Chart(legend_df)
+        .mark_text(align="left", dx=12, fontSize=12, fontWeight="bold", color=COLOR_DARK_GRAY)
+        .encode(
+            x=alt.X("orden:O", axis=None),
+            y=alt.value(34),
+            text="valoracion:N",
+        )
+    )
+    st.markdown(
+        "<div style='background:#ffffff; color:#111111; font-weight:900; text-align:center; border-radius:14px; padding:0.55rem 0.8rem; margin:0.95rem 0 0.35rem 0; box-shadow:0 8px 18px rgba(10,10,10,0.04);'>Leyenda General de los Minigráficos</div>",
+        unsafe_allow_html=True,
+    )
+    spacer_left, legend_col, spacer_right = st.columns([0.7, 3.8, 0.7], gap="small")
+    with legend_col:
+        st.altair_chart(
+            (legend + labels)
+            .properties(height=68)
+            .configure_view(strokeOpacity=0),
+            use_container_width=True,
+        )
+
+
+def _campogram_player_card_html(player_row: pd.Series) -> str:
+    category_style = get_category_style(str(player_row.get("categoria_familia") or "OTRA"))
+    consensus_style = get_consensus_style(str(player_row.get("consensus_label") or "Sin informes"))
+
+    team_label = str(player_row.get("equipo_actual") or "Sin equipo")
+    birth_year = (
+        str(int(float(player_row.get("ano_nacimiento"))))
+        if pd.notna(player_row.get("ano_nacimiento"))
+        else "-"
+    )
+    category_label = str(player_row.get("categoria") or "-")
+    report_count = int(player_row.get("report_count") or 0)
+    consensus_label = str(player_row.get("consensus_label") or "Sin informes")
+
+    return f"""
+    <div class="campogram-player-card" style="
+        background:{category_style['background']};
+        border-left-color:{consensus_style['border']};
+        border-top:1px solid rgba(0,0,0,0.05);
+        border-right:1px solid rgba(0,0,0,0.05);
+        border-bottom:1px solid rgba(0,0,0,0.05);
+    ">
+        <div class="campogram-player-top">
+            <div>
+                <div class="campogram-player-name">{player_row.get('jugador') or 'Sin nombre'}</div>
+                <div class="campogram-player-meta">{team_label}</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:0.18rem; align-items:flex-end;">
+                <span class="campogram-badge" style="
+                    background:{consensus_style['background']};
+                    color:{consensus_style['text']};
+                    border-color:{consensus_style['border']};
+                ">{consensus_label}</span>
+                <span class="campogram-badge" style="
+                    background:{category_style['background']};
+                    color:#111111;
+                    border-color:{category_style['border']};
+                ">{category_label}</span>
+            </div>
+        </div>
+        <div class="campogram-player-submeta">
+            Año nac. {birth_year} · {player_row.get('posicion_canonica') or '-'} · Informes {report_count}
+        </div>
+    </div>
+    """
+
+
+def _render_field_row(
+    row_definition: list[str | None],
+    position_blocks: dict[str, pd.DataFrame],
+    reports_df: pd.DataFrame,
+) -> None:
+    width_map = {
+        3: [1.25, 1.6, 1.25],
+        5: [0.95, 1.05, 1.05, 1.05, 1.15],
+        4: [1, 1, 1, 1],
+    }
+    row_widths = width_map.get(len(row_definition), [1] * len(row_definition))
+    columns = st.columns(row_widths, gap="medium")
+    for column, position in zip(columns, row_definition):
+        with column:
+            if not position:
+                st.markdown("<div style='height:1px;'></div>", unsafe_allow_html=True)
+                continue
+            _render_campogram_position_panel(
+                position,
+                position_blocks.get(position, pd.DataFrame()),
+                reports_df,
+            )
+
+
+def _render_campogram_summary_column(
+    title: str,
+    positions: list[str],
+    position_blocks: dict[str, pd.DataFrame],
+    reports_df: pd.DataFrame,
+) -> None:
+    st.markdown(
+        f"""
+        <div class="unionistas-panel" style="padding:0.85rem 0.95rem 0.7rem 0.95rem;">
+            <div style="font-weight:900; color:#111111; margin-bottom:0.6rem;">{title}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    for position in positions:
+        _render_campogram_position_panel(
+            position,
+            position_blocks.get(position, pd.DataFrame()),
+            reports_df,
+        )
+
+
+def _render_campogram_player_detail(player_row: pd.Series, reports_df: pd.DataFrame) -> None:
+    detail_col1, detail_col2, detail_col3 = st.columns(3, gap="small")
+    with detail_col1:
+        st.caption("Equipo actual")
+        st.markdown(f"**{player_row.get('equipo_actual') or '-'}**")
+        st.caption("Campograma")
+        st.markdown(f"**{player_row.get('campograma_canonico') or '-'}**")
+    with detail_col2:
+        st.caption("Año nac.")
+        birth_year = (
+            str(int(float(player_row.get("ano_nacimiento"))))
+            if pd.notna(player_row.get("ano_nacimiento"))
+            else "-"
+        )
+        st.markdown(f"**{birth_year}**")
+        st.caption("Posición base")
+        st.markdown(f"**{player_row.get('posicion_canonica') or '-'}**")
+    with detail_col3:
+        st.caption("Agente")
+        st.markdown(f"**{player_row.get('agente') or '-'}**")
+        st.caption("Consenso")
+        st.markdown(f"**{player_row.get('consensus_label') or 'Sin informes'}**")
+
+    extra_col1, extra_col2, extra_col3 = st.columns(3, gap="small")
+    with extra_col1:
+        st.caption("Cedión")
+        st.markdown(f"**{player_row.get('cedido') or '-'}**")
+        st.caption("Propietario")
+        st.markdown(f"**{player_row.get('equipo_propietario') or '-'}**")
+    with extra_col2:
+        st.caption("Posiciones en informes")
+        st.markdown(f"**{player_row.get('report_positions') or '-'}**")
+        st.caption("Chequeo posición")
+        st.markdown(f"**{player_row.get('position_check') or '-'}**")
+    with extra_col3:
+        st.caption("Scouts")
+        st.markdown(f"**{player_row.get('scouts_list') or '-'}**")
+        st.caption("Último scout")
+        st.markdown(f"**{player_row.get('latest_scout') or '-'}**")
+
+    if pd.notna(player_row.get("latest_report_at")):
+        st.caption(
+            f"Último informe: {player_row['latest_report_at'].strftime('%d/%m/%Y %H:%M')}"
+        )
+
+    if reports_df.empty:
+        st.info("Sin informes asociados todavía.")
+        return
+
+    st.markdown("**Informes**")
+    for _, report in reports_df.sort_values("marca_temporal", ascending=False).iterrows():
+        report_date = (
+            report["marca_temporal"].strftime("%d/%m/%Y %H:%M")
+            if pd.notna(report.get("marca_temporal"))
+            else "-"
+        )
+        verdict = report.get("valoracion_canonica") or report.get("valoracion") or "-"
+        st.markdown(
+            f"""
+            <div class="unionistas-panel" style="padding:0.85rem 0.95rem; margin-bottom:0.6rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.8rem; margin-bottom:0.5rem;">
+                    <div>
+                        <div style="font-weight:800; color:#111111;">{report.get('scout') or 'Sin scout'}</div>
+                        <div style="color:#666666; font-size:0.88rem;">{report_date}</div>
+                    </div>
+                    <div style="padding:0.24rem 0.68rem; border-radius:999px; font-weight:800; background:rgba(255,255,255,0.9); border:1px solid rgba(0,0,0,0.08);">
+                        {verdict}
+                    </div>
+                </div>
+                <div style="color:#4a4a4a; margin-bottom:0.35rem;"><strong>Técnico/táctico:</strong> {report.get('comentario_tecnico') or '-'}</div>
+                <div style="color:#4a4a4a; margin-bottom:0.35rem;"><strong>Físico/condicional:</strong> {report.get('comentario_fisico') or '-'}</div>
+                <div style="color:#4a4a4a;"><strong>Psicológico/actitudinal:</strong> {report.get('comentario_psicologico') or '-'}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def _render_campogram_position_panel(
+    position_label: str,
+    position_df: pd.DataFrame,
+    reports_df: pd.DataFrame,
+) -> None:
+    st.markdown(
+        f'<div class="campogram-position-title">{position_label}</div>',
+        unsafe_allow_html=True,
+    )
+    if position_df.empty:
+        st.caption("Sin jugadores")
+        return
+
+    for _, player_row in position_df.iterrows():
+        st.markdown(_campogram_player_card_html(player_row), unsafe_allow_html=True)
+        player_reports = (
+            reports_df[reports_df["player_row_id"].astype(str) == str(player_row["player_row_id"])]
+            if not reports_df.empty and "player_row_id" in reports_df.columns
+            else pd.DataFrame()
+        )
+        if hasattr(st, "popover"):
+            with st.popover(f"Detalle | {player_row.get('jugador') or 'Jugador'}", use_container_width=True):
+                _render_campogram_player_detail(player_row, player_reports)
+        else:
+            with st.expander(f"Detalle | {player_row.get('jugador') or 'Jugador'}", expanded=False):
+                _render_campogram_player_detail(player_row, player_reports)
+
+
+def render_campograms_tab() -> None:
+    render_section_title_inverse("Campogramas")
+    st.caption(
+        "Visualización estructurada de campogramas, jugadores incluidos y valoraciones recibidas desde formulario."
+    )
+
+    try:
+        dataset = get_campogram_dataset()
+    except Exception as exc:
+        st.error("No se pudo cargar la hoja de campogramas.")
+        st.exception(exc)
+        return
+
+    players_df = dataset.players.copy()
+    reports_df = dataset.reports.copy()
+
+    if players_df.empty:
+        st.info("La pestaña `Base Datos` no contiene jugadores para construir campogramas.")
+        return
+
+    campogram_names = get_campogram_ordered_names(players_df)
+    if not campogram_names:
+        st.info("No se han detectado campogramas válidos en `Base Datos`.")
+        return
+    global_unexpected_positions = sorted(
+        position for position in players_df["posicion_canonica"].dropna().unique().tolist()
+        if position not in CAMPOGRAM_POSITION_ORDER
+    )
+    if global_unexpected_positions:
+        st.warning(
+            "Posiciones no estándar detectadas en `Base Datos`: "
+            + ", ".join(global_unexpected_positions)
+            + ". Conviene revisarlas para que no creen columnas fuera del campograma."
+        )
+
+    selected_campogram = st.session_state.get("campogram_selected_name", campogram_names[0])
+    if selected_campogram not in campogram_names:
+        selected_campogram = campogram_names[0]
+
+    global_metric_cols = st.columns(3, gap="medium")
+    with global_metric_cols[0]:
+        _campogram_metric("Jugadores", len(players_df))
+    with global_metric_cols[1]:
+        _campogram_metric("Jugadores con informe", int((players_df["report_count"] > 0).sum()))
+    with global_metric_cols[2]:
+        _campogram_metric("Jugadores sin informe", int((players_df["report_count"] == 0).sum()))
+
+    render_section_title_inverse("Panorama Campogramas")
+    chart_pairs = [campogram_names[index:index + 2] for index in range(0, len(campogram_names), 2)]
+    for pair in chart_pairs:
+        chart_cols = st.columns(2, gap="medium")
+        for column, campogram_name in zip(chart_cols, pair):
+            with column:
+                chart_df = players_df[players_df["campograma_canonico"] == campogram_name].copy()
+                st.markdown(
+                    f"<div style='font-weight:900; color:#111111; margin:0.15rem 0 0.25rem 0;'>{campogram_name}</div>",
+                    unsafe_allow_html=True,
+                )
+                mini_chart = _campogram_overview_chart(chart_df)
+                if mini_chart is not None:
+                    st.altair_chart(mini_chart, use_container_width=True)
+        if len(pair) < 2:
+            with chart_cols[1]:
+                st.markdown("<div style='height:1px;'></div>", unsafe_allow_html=True)
+    render_campogram_overview_legend()
+
+    render_section_title_inverse("Seleccionar Campograma")
+    selected_campogram = st.selectbox(
+        "Campograma",
+        options=campogram_names,
+        index=campogram_names.index(selected_campogram),
+        key="campogram_selected_name",
+    )
+
+    summary = summarize_campogram(players_df, selected_campogram, reports_df)
+    metric_cols = st.columns(4, gap="medium")
+    with metric_cols[0]:
+        _campogram_metric("Jugadores", summary["players"])
+    with metric_cols[1]:
+        _campogram_metric("Con informes", summary["players_with_reports"])
+    with metric_cols[2]:
+        _campogram_metric("Sin informes", summary["sin_informes"])
+    with metric_cols[3]:
+        _campogram_metric("Sin consenso", summary["sin_consenso"])
+
+    scoped_players = players_df[players_df["campograma_canonico"] == selected_campogram].copy()
+    position_blocks = get_position_blocks(players_df, selected_campogram)
+    unexpected_positions = sorted(
+        position for position in scoped_players["posicion_canonica"].dropna().unique().tolist()
+        if position not in CAMPOGRAM_POSITION_ORDER
+    )
+    if unexpected_positions:
+        st.warning(
+            "Revisar posiciones no estándar en este campograma: "
+            + ", ".join(unexpected_positions)
+            + ". Las muestro aparte para no mezclarlas con el 1-4-2-3-1."
+        )
+
+    chart = _campogram_consensus_chart(scoped_players)
+    if chart is not None:
+        render_section_title_inverse("Valoración por posición")
+        st.altair_chart(chart, use_container_width=True)
+
+    render_section_title_inverse(selected_campogram)
+    st.markdown('<div class="campogram-field">', unsafe_allow_html=True)
+    st.markdown('<div class="campogram-field-row">', unsafe_allow_html=True)
+    _render_field_row([None, None, "POR 1", None, None], position_blocks, reports_df)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="campogram-field-row">', unsafe_allow_html=True)
+    _render_field_row(["LTD 2", "DFC 4", None, "DFC 5", "LTI 3"], position_blocks, reports_df)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="campogram-field-row">', unsafe_allow_html=True)
+    _render_field_row([None, "MC 8", None, "MC 6", None], position_blocks, reports_df)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="campogram-field-row">', unsafe_allow_html=True)
+    _render_field_row(["ED 7", None, "DC/MP 10", None, "EI 11"], position_blocks, reports_df)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="campogram-field-row">', unsafe_allow_html=True)
+    _render_field_row([None, None, "DC 9", None, None], position_blocks, reports_df)
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    extra_positions = [
+        position for position in position_blocks.keys()
+        if position not in CAMPOGRAM_POSITION_ORDER
+    ]
+    if extra_positions:
+        render_section_title_inverse("Otras posiciones")
+        extra_cols = st.columns(min(3, len(extra_positions)), gap="medium")
+        for index, position in enumerate(extra_positions):
+            with extra_cols[index % len(extra_cols)]:
+                _render_campogram_position_panel(position, position_blocks[position], reports_df)
+
+    render_section_title_inverse("Base campograma")
+    base_display = scoped_players[
+        [
+            "jugador",
+            "equipo_actual",
+            "categoria",
+            "ano_nacimiento",
+            "posicion_canonica",
+            "campograma_canonico",
+            "consensus_label",
+            "report_count",
+            "latest_scout",
+        ]
+    ].rename(
+        columns={
+            "jugador": "Jugador",
+            "equipo_actual": "Equipo actual",
+            "categoria": "Categoría",
+            "ano_nacimiento": "Año nac.",
+            "posicion_canonica": "Posición",
+            "campograma_canonico": "Campograma",
+            "consensus_label": "Consenso",
+            "report_count": "Informes",
+            "latest_scout": "Último scout",
+        }
+    )
+    st.dataframe(base_display, use_container_width=True, hide_index=True, height=420)
+
+
+def _calendar_default_matchday(planning_df: pd.DataFrame) -> int | None:
+    if planning_df.empty or "matchday" not in planning_df.columns:
+        return None
+
+    working_df = planning_df.copy()
+    working_df["date"] = pd.to_datetime(working_df["date"], errors="coerce")
+    working_df["matchday"] = pd.to_numeric(working_df["matchday"], errors="coerce")
+    today = pd.Timestamp.now().normalize()
+
+    upcoming_df = working_df[
+        working_df["matchday"].notna()
+        & working_df["date"].notna()
+        & (working_df["date"] >= today)
+        & (working_df["status"].fillna("").astype(str).str.lower() != "finished")
+    ].copy()
+
+    if not upcoming_df.empty:
+        grouped_upcoming = (
+            upcoming_df.groupby("matchday", as_index=False)
+            .agg(
+                min_date=("date", "min"),
+                match_count=("event_id", "count"),
+            )
+            .sort_values(
+                by=["match_count", "min_date", "matchday"],
+                ascending=[False, True, True],
+            )
+        )
+        return int(grouped_upcoming.iloc[0]["matchday"])
+
+    future_df = working_df[
+        working_df["matchday"].notna()
+        & working_df["date"].notna()
+        & (working_df["date"] >= today)
+    ].copy()
+    if not future_df.empty:
+        grouped_future = (
+            future_df.groupby("matchday", as_index=False)
+            .agg(
+                min_date=("date", "min"),
+                match_count=("event_id", "count"),
+            )
+            .sort_values(
+                by=["match_count", "min_date", "matchday"],
+                ascending=[False, True, True],
+            )
+        )
+        return int(grouped_future.iloc[0]["matchday"])
+
+    historic_df = working_df[working_df["matchday"].notna()].sort_values(
+        ["date", "matchday"],
+        ascending=[False, False],
+        na_position="last",
+    )
+    if not historic_df.empty:
+        return int(historic_df.iloc[0]["matchday"])
+    return None
+
+
+def _default_matchday_for_competition(competition_df: pd.DataFrame) -> int | None:
+    return _calendar_default_matchday(competition_df)
+
+
+def _competition_matchday_sequence(competition_df: pd.DataFrame) -> list[int]:
+    return sorted(
+        pd.to_numeric(competition_df["matchday"], errors="coerce")
+        .dropna()
+        .astype(int)
+        .unique()
+        .tolist()
+    )
+
+
+def _competition_matchday_state(
+    competition_df: pd.DataFrame,
+    competition_label: str,
+) -> tuple[list[int], int, bool, bool]:
+    sequence = _competition_matchday_sequence(competition_df)
+    if not sequence:
+        return [], 0, False, False
+
+    default_matchday = _default_matchday_for_competition(competition_df)
+    if default_matchday not in sequence:
+        default_matchday = sequence[0]
+
+    state_key = f"calendar_selected_matchday_{competition_label}"
+    if st.session_state.get(state_key) not in sequence:
+        st.session_state[state_key] = default_matchday
+
+    selected_matchday = int(st.session_state[state_key])
+    current_index = sequence.index(selected_matchday)
+    can_go_previous = current_index > 0
+    can_go_next = current_index < len(sequence) - 1
+    return sequence, selected_matchday, can_go_previous, can_go_next
+
+
+def _calendar_interest_badge(players_in_db: int) -> tuple[str, str, str]:
+    if players_in_db > 10:
+        return "+ de 10 jugadores", "#0f8a3b", "#e8f8ec"
+    if 7 <= players_in_db <= 10:
+        return "7-10 jugadores", "#55a630", "#eef8e2"
+    if 4 <= players_in_db <= 6:
+        return "4-6 jugadores", "#d4b000", "#fff7d6"
+    return "Menos de 4", "#8f8f8f", "#f0f0f0"
+
+
+def _calendar_interest_label(players_in_db: int) -> str:
+    return _calendar_interest_badge(players_in_db)[0]
+
+
+CALENDAR_INTEREST_ORDER = ["+ de 10 jugadores", "7-10 jugadores", "4-6 jugadores", "Menos de 4"]
+CALENDAR_INTEREST_COLORS = {
+    "+ de 10 jugadores": "#0f8a3b",
+    "7-10 jugadores": "#8CCF5F",
+    "4-6 jugadores": "#d4b000",
+    "Menos de 4": "#8f8f8f",
+}
+WEEKDAY_SHORT_ES = {
+    0: "Lun",
+    1: "Mar",
+    2: "Mie",
+    3: "Jue",
+    4: "Vie",
+    5: "Sab",
+    6: "Dom",
+}
+
+
+def _calendar_group_short_label(value: object) -> str:
+    text = str(value or "").strip()
+    replacements = {
+        "Group 1": "Gr 1",
+        "Group 2": "Gr 2",
+        "Group I": "Gr I",
+        "Group II": "Gr II",
+        "Group III": "Gr III",
+        "Group IV": "Gr IV",
+        "Group V": "Gr V",
+    }
+    return replacements.get(text, text)
+
+
+def render_calendar_match_card(match_row: pd.Series) -> None:
+    team_logo_map = get_calendar_team_logos()
+    badge_label, badge_border, badge_background = _calendar_interest_badge(
+        int(match_row.get("players_in_db") or 0)
+    )
+    date_value = pd.to_datetime(match_row.get("date"), errors="coerce")
+    if pd.notna(date_value):
+        weekday_label = WEEKDAY_SHORT_ES.get(int(date_value.dayofweek), "")
+        date_label = f"{weekday_label} {date_value.strftime('%d/%m/%Y')}".strip()
+    else:
+        date_label = "Fecha pendiente"
+    kickoff_label = str(match_row.get("kickoff_time") or "").strip() or "Horario pendiente"
+    competition_key = competition_family(match_row.get("competition"))
+    home_logo = team_logo_map.get(
+        (competition_key, resolve_team_key(match_row.get("home_team"), match_row.get("competition"), get_team_name_map()))
+    )
+    away_logo = team_logo_map.get(
+        (competition_key, resolve_team_key(match_row.get("away_team"), match_row.get("competition"), get_team_name_map()))
+    )
+    home_logo_html = (
+        f'<img src="{home_logo}" alt="{match_row.get("home_team", "")}" '
+        'style="width:28px; height:28px; object-fit:contain; margin-right:0.55rem; vertical-align:middle;" />'
+        if home_logo
+        else ""
+    )
+    away_logo_html = (
+        f'<img src="{away_logo}" alt="{match_row.get("away_team", "")}" '
+        'style="width:28px; height:28px; object-fit:contain; margin-right:0.55rem; vertical-align:middle;" />'
+        if away_logo
+        else ""
+    )
+    home_players = str(match_row.get("home_players_detected") or "").strip()
+    away_players = str(match_row.get("away_players_detected") or "").strip()
+    home_players_display = home_players if home_players else "Sin jugadores detectados"
+    away_players_display = away_players if away_players else "Sin jugadores detectados"
+
+    st.markdown(
+        f"""
+        <div style="
+            background: rgba(255,255,255,0.82);
+            border: 1px solid rgba(255,255,255,0.86);
+            border-left: 6px solid {COLOR_GOLD};
+            border-radius: 22px;
+            padding: 1rem 1.1rem;
+            margin-bottom: 0.9rem;
+            box-shadow: 0 12px 26px rgba(10,10,10,0.05);
+        ">
+            <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
+                <div style="flex:1 1 52%;">
+                    <div style="font-size:0.84rem; font-weight:800; color:#666666; letter-spacing:0.02em;">
+                        {match_row.get("competition", "")} | {match_row.get("group", "")} | Jornada {int(float(match_row.get("matchday") or 0))}
+                    </div>
+                    <div style="margin-top:0.35rem; font-size:1.18rem; font-weight:800; color:#111111;">
+                        <span style="display:inline-flex; align-items:center;">{home_logo_html}<span>{match_row.get("home_team", "")}</span></span>
+                        <span style="color:#6a6a6a; margin:0 0.45rem;">vs</span>
+                        <span style="display:inline-flex; align-items:center;">{away_logo_html}<span>{match_row.get("away_team", "")}</span></span>
+                    </div>
+                    <div style="margin-top:0.35rem; color:#4a4a4a; font-weight:600;">
+                        {date_label} | {kickoff_label}
+                    </div>
+                </div>
+                <div style="flex:1 1 48%;">
+                    <div style="
+                        display:inline-block;
+                        margin-bottom:0.6rem;
+                        padding:0.3rem 0.7rem;
+                        border-radius:999px;
+                        font-weight:800;
+                        border:1px solid {badge_border};
+                        background:{badge_background};
+                        color:#111111;
+                    ">
+                        {badge_label}
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr auto; gap:0.4rem 0.8rem; align-items:start;">
+                        <div style="font-weight:800; color:#111111; display:inline-flex; align-items:center;">{home_logo_html}<span>{match_row.get("home_team", "")}</span></div>
+                        <div style="font-weight:800; color:#111111;">{int(match_row.get("home_players_in_db") or 0)}</div>
+                        <div style="color:#4a4a4a;">{home_players_display}</div>
+                        <div></div>
+                        <div style="font-weight:800; color:#111111; display:inline-flex; align-items:center;">{away_logo_html}<span>{match_row.get("away_team", "")}</span></div>
+                        <div style="font-weight:800; color:#111111;">{int(match_row.get("away_players_in_db") or 0)}</div>
+                        <div style="color:#4a4a4a;">{away_players_display}</div>
+                        <div></div>
+                    </div>
+                    <div style="margin-top:0.65rem; color:#111111; font-weight:800;">
+                        Total BD: {int(match_row.get("players_in_db") or 0)}
+                    </div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def build_calendar_player_source(
+    general_df: pd.DataFrame,
+    source_label: str,
+) -> pd.DataFrame:
+    if source_label == "Base general":
+        return general_df.copy()
+
+    dataset = get_campogram_dataset()
+    players_df = dataset.players.copy()
+    if players_df.empty:
+        return pd.DataFrame(columns=["nombre_jugador", "equipo", "competicion", "veredicto"])
+
+    players_df = players_df[players_df["categoria_familia"].isin(["1RFEF", "2RFEF"])].copy()
+    if players_df.empty:
+        return pd.DataFrame(columns=["nombre_jugador", "equipo", "competicion", "veredicto"])
+
+    source_df = pd.DataFrame(
+        {
+            "nombre_jugador": players_df["jugador"],
+            "equipo": players_df["equipo_actual"],
+            "competicion": players_df["categoria"],
+            "veredicto": players_df["consensus_label"].replace({"Sin informes": "NC", "Sin consenso": "NC"}),
+        }
+    )
+    return source_df.dropna(subset=["nombre_jugador", "equipo", "competicion"])
+
+
+def _get_competition_selected_groups(
+    competition_label: str,
+    competition_df: pd.DataFrame,
+) -> list[str]:
+    group_options = sorted(
+        [option for option in competition_df["group"].dropna().unique().tolist() if option]
+    )
+    group_key = f"calendar_filter_groups_{competition_label}"
+    if group_key not in st.session_state:
+        st.session_state[group_key] = group_options
+    st.session_state[group_key] = [
+        value for value in st.session_state[group_key] if value in group_options
+    ] or group_options
+    return list(st.session_state[group_key])
+
+
+def _get_competition_active_matches(
+    competition_label: str,
+    competition_df: pd.DataFrame,
+    selected_groups: list[str] | None = None,
+    order_mode: str = "Por jugadores BD",
+) -> tuple[int | None, pd.DataFrame]:
+    if competition_df.empty:
+        return None, competition_df.copy()
+
+    if selected_groups:
+        working_df = competition_df[competition_df["group"].isin(selected_groups)].copy()
+    else:
+        working_df = competition_df.copy()
+
+    sequence, selected_matchday, _, _ = _competition_matchday_state(
+        working_df,
+        competition_label,
+    )
+    if not sequence:
+        return None, working_df.iloc[0:0].copy()
+
+    filtered_df = working_df[
+        pd.to_numeric(working_df["matchday"], errors="coerce") == int(selected_matchday)
+    ].copy()
+    if order_mode == "Por horario":
+        filtered_df = filtered_df.sort_values(
+            by=["group", "date", "kickoff_time", "players_in_db"],
+            ascending=[True, True, True, False],
+            na_position="last",
+        )
+    else:
+        filtered_df = filtered_df.sort_values(
+            by=["group", "players_in_db", "date", "kickoff_time"],
+            ascending=[True, False, True, True],
+            na_position="last",
+        )
+    return int(selected_matchday), filtered_df
+
+
+def render_competition_calendar_section(
+    competition_label: str,
+    competition_df: pd.DataFrame,
+) -> None:
+    if competition_df.empty:
+        return
+
+    selected_groups = _get_competition_selected_groups(competition_label, competition_df)
+    group_options = sorted(
+        [option for option in competition_df["group"].dropna().unique().tolist() if option]
+    )
+
+    render_section_title_inverse(competition_label)
+    filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 1], gap="medium")
+    with filter_col1:
+        selected_groups = st.multiselect(
+            "Grupo",
+            options=group_options,
+            default=selected_groups,
+            key=f"calendar_filter_groups_{competition_label}",
+        )
+    with filter_col2:
+        state_key = f"calendar_selected_matchday_{competition_label}"
+        widget_key = f"calendar_matchday_select_{competition_label}"
+        sequence, selected_matchday, _, _ = _competition_matchday_state(
+            competition_df[competition_df["group"].isin(selected_groups)].copy()
+            if selected_groups else competition_df.copy(),
+            competition_label,
+        )
+        if not sequence:
+            st.warning(f"No hay jornadas disponibles en {competition_label} con los filtros actuales.")
+            return
+
+        if st.session_state.get(widget_key) not in sequence:
+            st.session_state[widget_key] = selected_matchday
+        elif st.session_state.get(widget_key) != selected_matchday:
+            st.session_state[widget_key] = selected_matchday
+
+        st.markdown(
+            f"""
+            <div style="
+                display:inline-block;
+                background:rgba(255,255,255,0.92);
+                border:1px solid rgba(255,255,255,0.95);
+                border-radius:14px;
+                padding:0.38rem 0.8rem;
+                margin-bottom:0.35rem;
+                box-shadow:0 8px 18px rgba(10,10,10,0.04);
+                color:{COLOR_BLACK};
+                font-weight:900;
+                font-size:1rem;
+            ">
+                Jornada {selected_matchday}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        selected_matchday = st.selectbox(
+            "Jornada",
+            options=sequence,
+            key=widget_key,
+        )
+        st.session_state[state_key] = int(selected_matchday)
+        selected_matchday = int(st.session_state[state_key])
+        current_index = sequence.index(selected_matchday)
+        can_go_previous = current_index > 0
+        can_go_next = current_index < len(sequence) - 1
+    with filter_col3:
+        st.markdown("<div style='height:1.65rem;'></div>", unsafe_allow_html=True)
+        nav_col1, nav_col2 = st.columns(2, gap="small")
+        with nav_col1:
+            if st.button(
+                "←",
+                key=f"calendar_prev_{competition_label}",
+                use_container_width=True,
+                type="primary",
+                disabled=not can_go_previous,
+            ):
+                st.session_state[state_key] = sequence[current_index - 1]
+                st.rerun()
+        with nav_col2:
+            if st.button(
+                "→",
+                key=f"calendar_next_{competition_label}",
+                use_container_width=True,
+                type="primary",
+                disabled=not can_go_next,
+            ):
+                st.session_state[state_key] = sequence[current_index + 1]
+                st.rerun()
+
+    _, filtered_competition = _get_competition_active_matches(
+        competition_label=competition_label,
+        competition_df=competition_df,
+        selected_groups=selected_groups,
+        order_mode="Por jugadores BD",
+    )
+
+    total_matches = len(filtered_competition)
+    total_players_detected = int(filtered_competition["players_in_db"].sum())
+
+    summary_col1, summary_col2 = st.columns([1, 1.6], gap="large")
+    with summary_col1:
+        st.metric("Partidos de la jornada", total_matches)
+        st.markdown("<div style='height:0.8rem;'></div>", unsafe_allow_html=True)
+        st.metric("Jugadores detectados", total_players_detected)
+
+    with summary_col2:
+        if filtered_competition.empty:
+            st.metric("Distribución", "-")
+        else:
+            chart_df = filtered_competition.copy()
+            chart_df["interest_label"] = chart_df["players_in_db"].apply(
+                lambda value: _calendar_interest_label(int(value or 0))
+            )
+            grouped_chart_df = (
+                chart_df.groupby(["interest_label", "group"], as_index=False)
+                .size()
+                .rename(columns={"size": "partidos"})
+            )
+            grouped_chart_df["group_label"] = grouped_chart_df["group"].astype(str)
+            grouped_chart_df["group_short"] = grouped_chart_df["group_label"].map(
+                _calendar_group_short_label
+            )
+
+            color_domain = CALENDAR_INTEREST_ORDER
+            color_range = [CALENDAR_INTEREST_COLORS[label] for label in color_domain]
+            bar_chart = alt.Chart(grouped_chart_df).mark_bar(
+                cornerRadiusTopLeft=8,
+                cornerRadiusTopRight=8,
+                size=34,
+            ).encode(
+                x=alt.X(
+                    "interest_label:N",
+                    sort=CALENDAR_INTEREST_ORDER,
+                    title=None,
+                    axis=alt.Axis(labelAngle=0, labelLimit=180, ticks=False, domain=False),
+                ),
+                xOffset=alt.XOffset("group_label:N", sort="ascending"),
+                y=alt.Y(
+                    "partidos:Q",
+                    title="Partidos",
+                    axis=alt.Axis(grid=False, domain=False, tickCount=5),
+                ),
+                color=alt.Color(
+                    "interest_label:N",
+                    scale=alt.Scale(domain=color_domain, range=color_range),
+                    legend=None,
+                ),
+                tooltip=[
+                    alt.Tooltip("group:N", title="Grupo"),
+                    alt.Tooltip("interest_label:N", title="Categoría"),
+                    alt.Tooltip("partidos:Q", title="Partidos"),
+                ],
+            )
+            count_labels = alt.Chart(grouped_chart_df).mark_text(
+                dy=-6,
+                fontSize=12,
+                fontWeight="bold",
+                color=COLOR_BLACK,
+            ).encode(
+                x=alt.X("interest_label:N", sort=CALENDAR_INTEREST_ORDER),
+                xOffset=alt.XOffset("group_label:N", sort="ascending"),
+                y=alt.Y("partidos:Q"),
+                text=alt.Text("partidos:Q"),
+            )
+            group_labels = alt.Chart(grouped_chart_df).mark_text(
+                dy=-20,
+                fontSize=10,
+                fontWeight="bold",
+                color=COLOR_DARK_GRAY,
+            ).encode(
+                x=alt.X("interest_label:N", sort=CALENDAR_INTEREST_ORDER),
+                xOffset=alt.XOffset("group_label:N", sort="ascending"),
+                y=alt.Y("partidos:Q"),
+                text=alt.Text("group_short:N"),
+            )
+            distribution_chart = (
+                (bar_chart + count_labels + group_labels)
+                .properties(height=210)
+                .configure_view(strokeOpacity=0)
+                .configure_axis(
+                    labelColor=COLOR_DARK_GRAY,
+                    titleColor=COLOR_DARK_GRAY,
+                )
+            )
+            st.markdown("**Distribución por interés y grupo**")
+            st.altair_chart(distribution_chart, use_container_width=True)
+
+    st.markdown(
+        f"""
+        <div style="margin:0.2rem 0 0.8rem 0; color:#5a5a5a; font-weight:700;">
+            Jornada activa: {competition_label} J{int(selected_matchday)}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if filtered_competition.empty:
+        st.info(f"No hay partidos en {competition_label} para esta jornada con los filtros actuales.")
+        return
+
+    for _, match_row in filtered_competition.iterrows():
+        render_calendar_match_card(match_row)
+
+
+def render_calendar_tab(df: pd.DataFrame) -> None:
+    render_section_title("Planificación de partidos")
+    st.caption(
+        "Cruce entre calendario 1RFEF / 2RFEF y los jugadores presentes en la base actual."
+    )
+
+    control_col1, control_col2 = st.columns([1, 3], gap="medium")
+    with control_col1:
+        full_refresh = st.toggle(
+            "Recarga completa",
+            value=False,
+            help=(
+                "Si está desactivado, solo actualiza jornadas próximas, partidos sin hora "
+                "o estados aún abiertos. Si la hoja está vacía, hace la carga inicial completa."
+            ),
+        )
+        if st.button("Actualizar calendario", use_container_width=True):
+            with st.spinner("Actualizando calendario..."):
+                refreshed_df = refresh_calendar_matches(full_refresh=full_refresh)
+            get_calendar_matches.clear()
+            get_team_name_map.clear()
+            st.success(
+                f"Calendario actualizado: {len(refreshed_df)} partidos guardados en Google Sheets."
+            )
+            st.rerun()
+
+    with control_col2:
+        st.markdown(
+            """
+            <div class="unionistas-panel" style="height:100%;">
+                <div style="font-weight:800; color:#111111; margin-bottom:0.35rem;">
+                    Lógica de actualización
+                </div>
+                <div style="color:#4a4a4a; line-height:1.45;">
+                    La carga inicial guarda el calendario base completo. Después, el botón revisa
+                    sobre todo jornadas próximas, partidos pendientes de horario y estados no cerrados,
+                    para evitar consultas innecesarias.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    try:
+        calendar_df = get_calendar_matches()
+        team_map_df = get_team_name_map()
+    except Exception as exc:
+        st.error("No se pudo cargar la hoja de calendario.")
+        st.exception(exc)
+        return
+
+    if calendar_df.empty:
+        st.info(
+            "La hoja `calendar_matches` todavía está vacía. Usa `Actualizar calendario` para "
+            "hacer la carga inicial."
+        )
+        return
+
+    source_col1, source_col2 = st.columns([1.15, 3], gap="medium")
+    with source_col1:
+        player_source = st.selectbox(
+            "Fuente de jugadores",
+            options=["Base general", "Campogramas"],
+            key="calendar_player_source",
+        )
+    with source_col2:
+        st.caption(
+            "Base general usa la hoja subjetiva principal. Campogramas usa solo jugadores 1RFEF/2RFEF incluidos en los campogramas."
+        )
+
+    try:
+        calendar_source_df = build_calendar_player_source(df, player_source)
+    except Exception as exc:
+        st.error("No se pudieron cargar los jugadores de campogramas para el calendario.")
+        st.exception(exc)
+        return
+
+    planning_df = build_calendar_interest(calendar_source_df, calendar_df, team_map_df)
+    planning_df["date"] = pd.to_datetime(planning_df["date"], errors="coerce")
+    planning_df["display_date"] = planning_df["date"].dt.strftime("%d/%m/%Y").fillna("")
+
+    filter_col1 = st.columns(1, gap="medium")[0]
+    with filter_col1:
+        interesting_only = st.toggle(
+            "Solo partidos con jugadores",
+            value=False,
+            key="calendar_filter_interesting_only",
+        )
+
+    filtered_planning = planning_df.copy()
+    if interesting_only:
+        filtered_planning = filtered_planning[filtered_planning["players_in_db"] > 0]
+
+    if filtered_planning.empty:
+        st.warning("No hay partidos disponibles con los filtros actuales.")
+        return
+
+    st.markdown("<div style='height:0.3rem;'></div>", unsafe_allow_html=True)
+    export_col1, export_col2, export_col3, export_col4, export_col5 = st.columns(
+        [1.15, 1.2, 1.8, 2.6, 1.15],
+        gap="medium",
+    )
+    with export_col1:
+        st.markdown(
+            f"""
+            <div style="
+                display:inline-block;
+                background:#FFFFFF;
+                color:{COLOR_BLACK};
+                font-weight:900;
+                border-radius:14px;
+                border:1px solid rgba(0,0,0,0.08);
+                padding:0.45rem 0.85rem;
+                margin-bottom:0.55rem;
+            ">
+                Imprimir Calendario
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        export_scope = st.selectbox(
+            "Ámbito",
+            options=["Todo", "1RFEF", "2RFEF"],
+            key="calendar_pdf_scope",
+        )
+    with export_col2:
+        export_order = st.selectbox(
+            "Orden",
+            options=["Por jugadores BD", "Por horario"],
+            key="calendar_pdf_order",
+        )
+    export_groups: list[str] | None = None
+    with export_col3:
+        if export_scope in {"1RFEF", "2RFEF"}:
+            export_groups = st.multiselect(
+                "Grupos PDF",
+                options=sorted(
+                    filtered_planning.loc[
+                        filtered_planning["competition"] == export_scope, "group"
+                    ]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                ),
+                default=sorted(
+                    filtered_planning.loc[
+                        filtered_planning["competition"] == export_scope, "group"
+                    ]
+                    .dropna()
+                    .unique()
+                    .tolist()
+                ),
+                key="calendar_pdf_groups",
+            )
+        else:
+            st.markdown("<div style='height:2.35rem;'></div>", unsafe_allow_html=True)
+    with export_col4:
+        st.markdown("**Categorías PDF**")
+        checkbox_cols = st.columns(4, gap="small")
+        export_category_flags = {}
+        for column, label in zip(checkbox_cols, CALENDAR_INTEREST_ORDER):
+            with column:
+                export_category_flags[label] = st.checkbox(
+                    label,
+                    value=True,
+                    key=f"calendar_pdf_category_{label}",
+                )
+        export_categories = [
+            label for label, is_enabled in export_category_flags.items() if is_enabled
+        ]
+    sections: list[CalendarPdfSection] = []
+    competition_targets = ["1RFEF", "2RFEF"] if export_scope == "Todo" else [export_scope]
+    team_map_df = get_team_name_map()
+    logo_map = get_calendar_team_logos()
+    for competition_label in competition_targets:
+        competition_df = filtered_planning[
+            filtered_planning["competition"] == competition_label
+        ].copy()
+        active_groups = export_groups if export_scope == competition_label else _get_competition_selected_groups(
+            competition_label,
+            competition_df,
+        )
+        matchday, export_df = _get_competition_active_matches(
+            competition_label=competition_label,
+            competition_df=competition_df,
+            selected_groups=active_groups,
+            order_mode=export_order,
+        )
+        if matchday is None or export_df.empty:
+            continue
+        export_df = export_df.copy()
+        export_df["interest_label"] = export_df["players_in_db"].apply(
+            lambda value: _calendar_interest_label(int(value or 0))
+        )
+        if export_categories:
+            export_df = export_df[export_df["interest_label"].isin(export_categories)].copy()
+        if export_df.empty:
+            continue
+        export_df["resolved_home_team_key"] = export_df.apply(
+            lambda row: resolve_team_key(row.get("home_team"), row.get("competition"), team_map_df),
+            axis=1,
+        )
+        export_df["resolved_away_team_key"] = export_df.apply(
+            lambda row: resolve_team_key(row.get("away_team"), row.get("competition"), team_map_df),
+            axis=1,
+        )
+        sections.append(
+            CalendarPdfSection(
+                competition=competition_label,
+                matchday=matchday,
+                order_label=export_order,
+                matches=export_df,
+            )
+        )
+
+    pdf_bytes = b""
+    if sections:
+        pdf_bytes = build_calendar_pdf(
+            sections=sections,
+            unionistas_logo_path=LOGO_PATH,
+            logo_map=logo_map,
+            printed_at=datetime.now(),
+        )
+    with export_col5:
+        st.markdown("<div style='height:1.75rem;'></div>", unsafe_allow_html=True)
+        st.download_button(
+            "Imprimir Calendario",
+            data=pdf_bytes,
+            file_name=f"Calendario_ScoutUnion_{datetime.now().strftime('%y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            disabled=not bool(pdf_bytes),
+        )
+
+    for competition_label in ["1RFEF", "2RFEF"]:
+        competition_df = filtered_planning[
+            filtered_planning["competition"] == competition_label
+        ].copy()
+        render_competition_calendar_section(competition_label, competition_df)
+
+    render_section_title_inverse("Tabla completa")
+    display_columns = [
+        "display_date",
+        "kickoff_time",
+        "competition",
+        "group",
+        "matchday",
+        "home_team",
+        "away_team",
+        "home_players_in_db",
+        "home_players_detected",
+        "away_players_in_db",
+        "away_players_detected",
+        "players_in_db",
+        "players_detected",
+        "status",
+        "venue",
+        "city",
+        "updated_at",
+    ]
+    display_df = filtered_planning[display_columns].rename(
+        columns={
+            "display_date": "Fecha",
+            "kickoff_time": "Hora",
+            "competition": "Competición",
+            "group": "Grupo",
+            "matchday": "Jornada",
+            "home_team": "Local",
+            "away_team": "Visitante",
+            "home_players_in_db": "Jug. local",
+            "home_players_detected": "Detectados local",
+            "away_players_in_db": "Jug. visitante",
+            "away_players_detected": "Detectados visitante",
+            "players_in_db": "Jugadores BD",
+            "players_detected": "Jugadores detectados",
+            "status": "Estado",
+            "venue": "Estadio",
+            "city": "Ciudad",
+            "updated_at": "Actualizado",
+        }
+    )
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        height=700,
+    )
+
+
 def main() -> None:
     initialize_state()
     apply_pending_filter()
@@ -2269,6 +3898,10 @@ def main() -> None:
         render_overview(filtered_df, df, objective_matches_df)
     elif selected_view == "Jugador":
         render_player_tab(filtered_df, objective_df, objective_matches_df)
+    elif selected_view == "Calendario":
+        render_calendar_tab(filtered_df)
+    elif selected_view == "Campogramas":
+        render_campograms_tab()
     else:
         render_reports_table(filtered_df)
 

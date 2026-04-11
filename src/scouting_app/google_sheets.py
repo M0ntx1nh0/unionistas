@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+import unicodedata
 
 import gspread
 import pandas as pd
@@ -10,7 +11,7 @@ from google.oauth2.service_account import Credentials
 
 
 GOOGLE_SHEETS_SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
@@ -71,11 +72,28 @@ def _make_headers_unique(headers: list[str]) -> list[str]:
     return unique_headers
 
 
-def read_google_sheet() -> pd.DataFrame:
-    config = _get_sheet_config()
+def _normalize_worksheet_name(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode()
+    text = text.lower().strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _open_worksheet(workbook: gspread.Spreadsheet, worksheet_name: str) -> gspread.Worksheet:
+    try:
+        return workbook.worksheet(worksheet_name)
+    except gspread.WorksheetNotFound:
+        normalized_target = _normalize_worksheet_name(worksheet_name)
+        for worksheet in workbook.worksheets():
+            if _normalize_worksheet_name(worksheet.title) == normalized_target:
+                return worksheet
+        raise
+
+
+def read_google_worksheet(spreadsheet_id: str, worksheet_name: str) -> pd.DataFrame:
     client = get_google_sheets_client()
-    workbook = client.open_by_key(config["spreadsheet_id"])
-    worksheet = workbook.worksheet(config["worksheet_name"])
+    workbook = client.open_by_key(spreadsheet_id)
+    worksheet = _open_worksheet(workbook, worksheet_name)
     values = worksheet.get_all_values()
     if not values:
         return pd.DataFrame()
@@ -94,3 +112,19 @@ def read_google_sheet() -> pd.DataFrame:
         normalized_rows.append(padded_row)
 
     return pd.DataFrame(normalized_rows, columns=headers)
+
+
+def write_google_worksheet(spreadsheet_id: str, worksheet_name: str, df: pd.DataFrame) -> None:
+    client = get_google_sheets_client()
+    workbook = client.open_by_key(spreadsheet_id)
+    worksheet = _open_worksheet(workbook, worksheet_name)
+    rows = [df.columns.astype(str).tolist()]
+    if not df.empty:
+        rows.extend(df.fillna("").astype(str).values.tolist())
+    worksheet.clear()
+    worksheet.update("A1", rows)
+
+
+def read_google_sheet() -> pd.DataFrame:
+    config = _get_sheet_config()
+    return read_google_worksheet(config["spreadsheet_id"], config["worksheet_name"])
