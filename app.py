@@ -3274,15 +3274,117 @@ def build_calendar_player_source(
     if players_df.empty:
         return pd.DataFrame(columns=["nombre_jugador", "equipo", "competicion", "veredicto"])
 
+    team_source = players_df["equipo_actual"].where(
+        players_df["equipo_actual"].astype(str).str.strip().ne(""),
+        players_df["situacion_equipo"] if "situacion_equipo" in players_df.columns else "",
+    )
     source_df = pd.DataFrame(
         {
             "nombre_jugador": players_df["jugador"],
-            "equipo": players_df["equipo_actual"],
+            "equipo": team_source,
             "competicion": players_df["categoria"],
             "veredicto": players_df["consensus_label"].replace({"Sin informes": "NC", "Sin consenso": "NC"}),
         }
     )
-    return source_df.dropna(subset=["nombre_jugador", "equipo", "competicion"])
+    source_df = source_df.dropna(subset=["nombre_jugador", "equipo", "competicion"])
+    return source_df[
+        source_df["nombre_jugador"].astype(str).str.strip().ne("")
+        & source_df["equipo"].astype(str).str.strip().ne("")
+        & source_df["competicion"].astype(str).str.strip().ne("")
+    ].copy()
+
+
+def build_calendar_mapping_issues(
+    player_source_df: pd.DataFrame,
+    calendar_df: pd.DataFrame,
+    team_map_df: pd.DataFrame,
+) -> pd.DataFrame:
+    required_source_columns = {"nombre_jugador", "equipo", "competicion"}
+    required_calendar_columns = {"competition", "home_team", "away_team"}
+    if (
+        player_source_df.empty
+        or calendar_df.empty
+        or not required_source_columns.issubset(player_source_df.columns)
+        or not required_calendar_columns.issubset(calendar_df.columns)
+    ):
+        return pd.DataFrame(
+            columns=[
+                "Competición",
+                "Equipo campograma",
+                "Clave normalizada",
+                "Jugadores",
+                "Nº jugadores",
+            ]
+        )
+
+    calendar_team_keys: set[tuple[str, str]] = set()
+    calendar_working = calendar_df.copy()
+    for _, row in calendar_working.iterrows():
+        competition_key = competition_family(row.get("competition"))
+        for team_column in ["home_team", "away_team"]:
+            team_key = resolve_team_key(row.get(team_column), row.get("competition"), team_map_df)
+            if competition_key and team_key:
+                calendar_team_keys.add((competition_key, team_key))
+
+    source = player_source_df.copy()
+    source = source.dropna(subset=["nombre_jugador", "equipo", "competicion"])
+    source["competition_family"] = source["competicion"].apply(competition_family)
+    source = source[source["competition_family"].isin(["1RFEF", "2RFEF"])].copy()
+    if source.empty:
+        return pd.DataFrame(
+            columns=[
+                "Competición",
+                "Equipo campograma",
+                "Clave normalizada",
+                "Jugadores",
+                "Nº jugadores",
+            ]
+        )
+
+    source["team_key"] = source.apply(
+        lambda row: resolve_team_key(row.get("equipo"), row.get("competicion"), team_map_df),
+        axis=1,
+    )
+    source = source[source["team_key"].astype(str).str.strip().ne("")].copy()
+    source["mapped_in_calendar"] = source.apply(
+        lambda row: (row["competition_family"], row["team_key"]) in calendar_team_keys,
+        axis=1,
+    )
+    unresolved = source[~source["mapped_in_calendar"]].copy()
+    if unresolved.empty:
+        return pd.DataFrame(
+            columns=[
+                "Competición",
+                "Equipo campograma",
+                "Clave normalizada",
+                "Jugadores",
+                "Nº jugadores",
+            ]
+        )
+
+    rows: list[dict[str, object]] = []
+    grouped = unresolved.groupby(["competition_family", "equipo", "team_key"], dropna=False)
+    for (competition_key, team_name, team_key), group_df in grouped:
+        players = sorted(
+            {
+                str(player).strip()
+                for player in group_df["nombre_jugador"].tolist()
+                if str(player).strip()
+            }
+        )
+        rows.append(
+            {
+                "Competición": competition_key,
+                "Equipo campograma": str(team_name or "").strip(),
+                "Clave normalizada": str(team_key or "").strip(),
+                "Jugadores": " | ".join(players),
+                "Nº jugadores": len(players),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(
+        ["Competición", "Equipo campograma", "Clave normalizada"],
+        ascending=[True, True, True],
+    )
 
 
 def _get_competition_selected_groups(
@@ -3623,6 +3725,25 @@ def render_calendar_tab(df: pd.DataFrame) -> None:
         st.exception(exc)
         return
 
+    if player_source == "Campogramas":
+        mapping_issues_df = build_calendar_mapping_issues(
+            calendar_source_df,
+            calendar_df,
+            team_map_df,
+        )
+        with st.expander(
+            f"Control de mapeo campogramas ({len(mapping_issues_df)} equipos pendientes)",
+            expanded=not mapping_issues_df.empty,
+        ):
+            if mapping_issues_df.empty:
+                st.success("Todos los equipos de campogramas 1RFEF/2RFEF tienen equivalencia en el calendario.")
+            else:
+                st.warning(
+                    "Estos equipos tienen jugadores de campogramas, pero no encuentran equivalencia "
+                    "en los equipos cargados del calendario. Revisa alias o nombres en `team_name_map`."
+                )
+                st.dataframe(mapping_issues_df, use_container_width=True, hide_index=True)
+
     planning_df = build_calendar_interest(calendar_source_df, calendar_df, team_map_df)
     planning_df["date"] = pd.to_datetime(planning_df["date"], errors="coerce")
     planning_df["display_date"] = planning_df["date"].dt.strftime("%d/%m/%Y").fillna("")
@@ -3724,9 +3845,12 @@ def render_calendar_tab(df: pd.DataFrame) -> None:
         competition_df = filtered_planning[
             filtered_planning["competition"] == competition_label
         ].copy()
-        active_groups = export_groups if export_scope == competition_label else _get_competition_selected_groups(
-            competition_label,
-            competition_df,
+        active_groups = (
+            export_groups
+            if export_scope == competition_label
+            else sorted(
+                [group for group in competition_df["group"].dropna().unique().tolist() if group]
+            )
         )
         matchday, export_df = _get_competition_active_matches(
             competition_label=competition_label,

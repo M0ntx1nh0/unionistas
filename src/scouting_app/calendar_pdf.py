@@ -481,55 +481,45 @@ def build_calendar_pdf(
 
         pdf.showPage()
 
+    has_drawn_match_page = False
+
     for section in sections:
         if section.matches.empty:
             continue
-        first_group_page = True
         card_height = 116
         card_gap = 8
+        cards_per_page = 5
 
         for group, group_df in section.matches.groupby("group", sort=True):
-            if not first_group_page:
-                pdf.showPage()
-
-            pdf.setFillColor(UNIONISTAS_WHITE)
-            pdf.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, stroke=0, fill=1)
-            _draw_page_frame(
-                pdf,
-                unionistas_logo,
-                page_number,
-                header_title=f"{section.competition} | Jornada {section.matchday} | {group}",
-                footer_left=f"Orden: {section.order_label}",
-            )
-            page_number += 1
-            first_group_page = False
-            current_y = PAGE_HEIGHT - 84
-
-            for _, match_row in group_df.iterrows():
-                if current_y - card_height < 40:
+            group_rows = [row for _, row in group_df.iterrows()]
+            for chunk_start in range(0, len(group_rows), cards_per_page):
+                if has_drawn_match_page:
                     pdf.showPage()
-                    pdf.setFillColor(UNIONISTAS_WHITE)
-                    pdf.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, stroke=0, fill=1)
-                    _draw_page_frame(
-                        pdf,
-                        unionistas_logo,
-                        page_number,
-                        header_title=f"{section.competition} | Jornada {section.matchday} | {group}",
-                        footer_left=f"Orden: {section.order_label}",
-                    )
-                    page_number += 1
-                    current_y = PAGE_HEIGHT - 84
 
-                _draw_match_card(
-                    pdf=pdf,
-                    match_row=match_row,
-                    logo_map=logo_map,
-                    x=34,
-                    y=current_y,
-                    width=PAGE_WIDTH - 68,
-                    height=card_height,
+                pdf.setFillColor(UNIONISTAS_WHITE)
+                pdf.rect(0, 0, PAGE_WIDTH, PAGE_HEIGHT, stroke=0, fill=1)
+                _draw_page_frame(
+                    pdf,
+                    unionistas_logo,
+                    page_number,
+                    header_title=f"{section.competition} | Jornada {section.matchday} | {group}",
+                    footer_left=f"Orden: {section.order_label}",
                 )
-                current_y -= card_height + card_gap
+                page_number += 1
+                has_drawn_match_page = True
+                current_y = PAGE_HEIGHT - 84
+
+                for match_row in group_rows[chunk_start : chunk_start + cards_per_page]:
+                    _draw_match_card(
+                        pdf=pdf,
+                        match_row=match_row,
+                        logo_map=logo_map,
+                        x=34,
+                        y=current_y,
+                        width=PAGE_WIDTH - 68,
+                        height=card_height,
+                    )
+                    current_y -= card_height + card_gap
 
     pdf.save()
     return buffer.getvalue()

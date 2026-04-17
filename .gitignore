@@ -1,5 +1,14 @@
 .venv/
 __pycache__/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.env
+.env.*
+!.env.example
+frontend/.env.local
+frontend/.env.*.local
+!frontend/.env.local.example
 .streamlit/secrets.toml
 unionistas-1b7de8622f6a.json
 auth/

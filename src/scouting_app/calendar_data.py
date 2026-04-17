@@ -107,14 +107,52 @@ DEFAULT_TEAM_ALIASES = {
         "nastic de tarragona": "gimnastic tarragona",
         "gimnastic de tarragona": "gimnastic tarragona",
         "gimnastic tarragona": "gimnastic tarragona",
+        "at sanluqueno": "atletico sanluqueno",
+        "atletico sanluqueno": "atletico sanluqueno",
+        "atletico sanluqueño": "atletico sanluqueno",
+        "torremolinos": "juventud torremolinos",
+        "juventud torremolinos": "juventud torremolinos",
+        "juventud torremolinos cf": "juventud torremolinos",
     },
     "2RFEF": {
         "elche b": "elche illicitano",
         "elche ilicitano": "elche illicitano",
         "elche illicitano": "elche illicitano",
+        "atletico malagueno": "atletico malagueno",
+        "atletico malagueño": "atletico malagueno",
+        "malagueno": "atletico malagueno",
+        "malagueño": "atletico malagueno",
+        "barca athletic": "barcelona atletic",
+        "barca atletic": "barcelona atletic",
+        "barça atlètic": "barcelona atletic",
+        "barca atlètic": "barcelona atletic",
+        "barcelona athletic": "barcelona atletic",
+        "barcelona atletic": "barcelona atletic",
+        "barcelona atlètic": "barcelona atletic",
+        "deportivo fabril": "deportivo fabril",
+        "deportivo de la coruna b": "deportivo fabril",
+        "deportivo la coruna b": "deportivo fabril",
+        "deportivo b": "deportivo fabril",
+        "fabril": "deportivo fabril",
+        "oviedo vetusta": "real oviedo vetusta",
+        "real oviedo vetusta": "real oviedo vetusta",
+        "real oviedo b": "real oviedo vetusta",
+        "r majadahonda": "rayo majadahonda",
+        "rayo majadahonda": "rayo majadahonda",
+        "cf rayo majadahonda": "rayo majadahonda",
+        "majadahonda": "rayo majadahonda",
+        "segoviana": "gimnastica segoviana",
+        "gimnastica segoviana": "gimnastica segoviana",
+        "gimnástica segoviana": "gimnastica segoviana",
+        "xerez cd": "xerez",
+        "xerez": "xerez",
+        "xerez deportivo": "xerez deportivo",
+        "xerez deportivo fc": "xerez deportivo",
         "racing b": "racing santander ii",
         "rayo cantabria": "racing santander ii",
         "racing santander ii": "racing santander ii",
+        "las palmas atletico": "las palmas atletico",
+        "las palmas atletico b": "las palmas atletico",
         "intercity": "intercity sj d alacant",
         "cf intercity": "intercity sj d alacant",
         "intercity sj d alacant": "intercity sj d alacant",
@@ -168,6 +206,8 @@ DEFAULT_TEAM_ALIASES = {
         "marino luano": "marino de luanco",
         "marino luanco": "marino de luanco",
         "marino de luanco": "marino de luanco",
+        "ucam": "ucam murcia",
+        "ucam murcia": "ucam murcia",
     },
 }
 
@@ -475,6 +515,14 @@ def _canonicalize_team_name(value: Any) -> str:
     text = _strip_accents(value)
     text = text.replace(".", " ")
     text = text.replace("-", " ")
+    pre_normalized = re.sub(r"[^a-z0-9\s]", " ", text)
+    pre_normalized = re.sub(r"\s+", " ", pre_normalized).strip()
+    special_cases = {
+        "xerez deportivo": "xerez deportivo",
+        "xerez deportivo fc": "xerez deportivo",
+    }
+    if pre_normalized in special_cases:
+        return special_cases[pre_normalized]
     text = re.sub(r"\bu\s*21\b", " ", text)
     text = re.sub(r"\bb\b", " b ", text)
     text = re.sub(r"\bclub de futbol\b", " ", text)
@@ -660,7 +708,6 @@ def build_calendar_interest(
     if "marca_temporal" in scouting.columns:
         scouting = scouting.sort_values("marca_temporal", ascending=False, na_position="last")
     scouting = scouting.dropna(subset=["nombre_jugador", "equipo", "competicion"])
-    scouting = scouting.drop_duplicates(subset=["nombre_jugador"], keep="first")
     consensus_map = _build_player_consensus_map(scouting_df)
 
     team_map = _build_team_mapping(team_map_df)
@@ -668,6 +715,10 @@ def build_calendar_interest(
     scouting["team_key"] = scouting.apply(
         lambda row: _apply_team_mapping(row.get("equipo"), row.get("competicion"), team_map),
         axis=1,
+    )
+    scouting = scouting.drop_duplicates(
+        subset=["nombre_jugador", "competition_family", "team_key"],
+        keep="first",
     )
 
     grouped_players = (
