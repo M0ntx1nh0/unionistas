@@ -1,0 +1,93 @@
+name: Sync Supabase Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Datos a sincronizar"
+        required: true
+        default: "reports"
+        type: choice
+        options:
+          - all
+          - reports
+          - campograms
+          - calendar
+          - wyscout
+      dry_run:
+        description: "Simular sin escribir en Supabase"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  sync:
+    name: Sync ${{ inputs.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Write private config
+        run: |
+          cat > .env <<EOF
+          SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          EOF
+          mkdir -p .streamlit
+          printf '%s' "${{ secrets.STREAMLIT_SECRETS_TOML }}" > .streamlit/secrets.toml
+
+      - name: Run selected sync
+        env:
+          TARGET: ${{ inputs.target }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          APPLY_FLAG=""
+          if [ "$DRY_RUN" = "false" ]; then
+            APPLY_FLAG="--apply"
+          fi
+
+          run_sync() {
+            echo "Running $1 $APPLY_FLAG"
+            python "$1" $APPLY_FLAG
+          }
+
+          case "$TARGET" in
+            reports)
+              run_sync scripts/sync_scouting_reports_to_supabase.py
+              ;;
+            campograms)
+              run_sync scripts/sync_campograms_to_supabase.py
+              ;;
+            calendar)
+              run_sync scripts/sync_calendar_to_supabase.py
+              ;;
+            wyscout)
+              run_sync scripts/sync_objective_players_to_supabase.py
+              ;;
+            all)
+              run_sync scripts/sync_scouting_reports_to_supabase.py
+              run_sync scripts/sync_campograms_to_supabase.py
+              run_sync scripts/sync_calendar_to_supabase.py
+              run_sync scripts/sync_objective_players_to_supabase.py
+              ;;
+            *)
+              echo "Unknown target: $TARGET"
+              exit 1
+              ;;
+          esac
