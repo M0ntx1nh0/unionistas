@@ -67,6 +67,13 @@ jobs:
             python "$1" $APPLY_FLAG
           }
 
+          run_sync_with_args() {
+            script="$1"
+            shift
+            echo "Running $script $APPLY_FLAG $*"
+            python "$script" $APPLY_FLAG "$@"
+          }
+
           case "$TARGET" in
             reports)
               run_sync scripts/sync_scouting_reports_to_supabase.py
@@ -78,13 +85,13 @@ jobs:
               run_sync scripts/sync_calendar_to_supabase.py
               ;;
             wyscout)
-              run_sync scripts/sync_objective_players_to_supabase.py
+              run_sync_with_args scripts/sync_objective_players_to_supabase.py --source drive
               ;;
             all)
               run_sync scripts/sync_scouting_reports_to_supabase.py
               run_sync scripts/sync_campograms_to_supabase.py
               run_sync scripts/sync_calendar_to_supabase.py
-              run_sync scripts/sync_objective_players_to_supabase.py
+              run_sync_with_args scripts/sync_objective_players_to_supabase.py --source drive
               ;;
             *)
               echo "Unknown target: $TARGET"
