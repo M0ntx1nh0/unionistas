@@ -181,6 +181,11 @@ function normalizeText(value: string | null | undefined) {
     .toLocaleLowerCase("es");
 }
 
+function rawTextValue(rawData: Record<string, unknown> | null | undefined, key: string) {
+  const value = rawData?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function competitionKey(value: string | null | undefined) {
   const normalized = normalizeText(value);
   if (normalized.includes("2rfef") || normalized.includes("2 rfef") || normalized.includes("segunda")) {
@@ -291,11 +296,25 @@ function groupedCampogramConsensus(reports: CampogramReport[]) {
   const reportsByPlayer = new Map<string, CampogramReport[]>();
   for (const report of reports) {
     const competition = competitionKey(report.category);
-    const team = canonicalTeamName(report.team_name, competition);
+    const effectiveTeamName =
+      report.team_name ||
+      rawTextValue(report.raw_data, "Equipo en el que juega") ||
+      rawTextValue(report.raw_data, "equipo_actual") ||
+      rawTextValue(report.raw_data, "situacion_equipo");
+    const team = canonicalTeamName(effectiveTeamName, competition);
     const key = `${competition}|${team}|${normalizeText(report.player_name)}`;
     reportsByPlayer.set(key, [...(reportsByPlayer.get(key) || []), report]);
   }
   return reportsByPlayer;
+}
+
+function campogramPlayerTeamName(player: CampogramPlayer) {
+  return (
+    player.team_name ||
+    rawTextValue(player.raw_data, "equipo_actual") ||
+    rawTextValue(player.raw_data, "situacion_equipo") ||
+    ""
+  );
 }
 
 function buildTeamLogoMap(objectiveMatches: ObjectivePlayerMatch[]) {
@@ -358,11 +377,12 @@ function buildPlayerIndex(
     const reportsByPlayer = groupedCampogramConsensus(campogramReports);
     for (const player of campogramPlayers) {
       const competition = competitionKey(player.category);
-      const key = `${competition}|${canonicalTeamName(player.team_name, competition)}|${normalizeText(player.player_name)}`;
+      const effectiveTeamName = campogramPlayerTeamName(player);
+      const key = `${competition}|${canonicalTeamName(effectiveTeamName, competition)}|${normalizeText(player.player_name)}`;
       const playerReports = reportsByPlayer.get(key) || [];
-      addPlayer(competition, player.team_name, {
+      addPlayer(competition, effectiveTeamName, {
         playerName: player.player_name,
-        teamName: player.team_name || "",
+        teamName: effectiveTeamName,
         competition: player.category,
         verdict: buildConsensus(playerReports.map((report) => report.verdict)),
         canOpen: true,
