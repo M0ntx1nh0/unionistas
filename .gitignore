@@ -19,3 +19,4 @@ auth/
 .DS_Store
 data/raw/*.csv
 data/processed/*.csv
+supabase/.temp/
