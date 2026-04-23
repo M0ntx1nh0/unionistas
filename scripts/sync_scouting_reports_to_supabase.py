@@ -29,6 +29,7 @@ from src.scouting_app.google_sheets import _get_sheet_config  # noqa: E402
 
 
 SEASON_LABEL = "2025/26"
+SOURCE_SYSTEM = "google_sheets_subjective"
 
 
 def _clean_text(value: Any) -> str | None:
@@ -182,6 +183,7 @@ def _report_payload(
 
     return {
         "season_id": season_id,
+        "source_system": SOURCE_SYSTEM,
         "player_name": player_name,
         "normalized_player_name": canonicalize_team_name(player_name),
         "scout_name": scout_name,

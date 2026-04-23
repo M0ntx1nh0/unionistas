@@ -32,6 +32,8 @@ from src.scouting_app.campogram_data import (
 
 
 SEASON_LABEL = "2025/26"
+PLAYER_SOURCE_SYSTEM = "google_sheets_campogram_base"
+REPORT_SOURCE_SYSTEM = "google_sheets_campogram_responses"
 
 
 def _clean_text(value: Any) -> str | None:
@@ -204,6 +206,7 @@ def _player_payload(
     return {
         "season_id": season_id,
         "campogram_id": campogram_id,
+        "source_system": PLAYER_SOURCE_SYSTEM,
         "player_name": player_name,
         "normalized_player_name": normalized_player_name,
         "team_name": team_name,
@@ -259,6 +262,7 @@ def _report_payload(
         "season_id": season_id,
         "campogram_id": campogram_id,
         "campogram_player_id": campogram_player_id,
+        "source_system": REPORT_SOURCE_SYSTEM,
         "player_name": player_name,
         "normalized_player_name": normalized_player_name,
         "scout_name": scout_name,
