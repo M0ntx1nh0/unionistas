@@ -659,25 +659,27 @@ function CampogramPitch({
 
   return (
     <>
-      <div className="campogram-pitch">
-        <div className="campogram-pitch__grass" />
-        <div className="campogram-pitch__center-circle" />
-        <div className="campogram-pitch__box campogram-pitch__box--left" />
-        <div className="campogram-pitch__box campogram-pitch__box--right" />
-        <div className="campogram-pitch__content">
-          {PITCH_LINES.map((line) => (
-            <div className={`campogram-pitch-line ${line.className}`} key={line.className}>
-              {line.positions.map((position) => (
-                <PitchPositionPanel
-                  key={position}
-                  onSelectPlayer={onSelectPlayer}
-                  players={players}
-                  position={position}
-                  reportMap={reportMap}
-                />
-              ))}
-            </div>
-          ))}
+      <div className="campogram-pitch-scroll">
+        <div className="campogram-pitch">
+          <div className="campogram-pitch__grass" />
+          <div className="campogram-pitch__center-circle" />
+          <div className="campogram-pitch__box campogram-pitch__box--left" />
+          <div className="campogram-pitch__box campogram-pitch__box--right" />
+          <div className="campogram-pitch__content">
+            {PITCH_LINES.map((line) => (
+              <div className={`campogram-pitch-line ${line.className}`} key={line.className}>
+                {line.positions.map((position) => (
+                  <PitchPositionPanel
+                    key={position}
+                    onSelectPlayer={onSelectPlayer}
+                    players={players}
+                    position={position}
+                    reportMap={reportMap}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <div className="campogram-pitch-legend">

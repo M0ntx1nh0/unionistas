@@ -1590,10 +1590,26 @@ p {
   border: 1px solid rgba(10, 10, 10, 0.16);
   border-radius: 32px;
   box-shadow: 0 24px 60px rgba(10, 10, 10, 0.14);
-  min-height: 640px;
+  min-height: 620px;
   overflow: hidden;
-  padding: 1.2rem;
+  padding: 1rem;
   position: relative;
+}
+
+.campogram-pitch-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.32rem;
+  width: 100%;
+}
+
+.campogram-pitch-scroll::-webkit-scrollbar {
+  height: 0.58rem;
+}
+
+.campogram-pitch-scroll::-webkit-scrollbar-thumb {
+  background: rgba(10, 10, 10, 0.22);
+  border-radius: 999px;
 }
 
 .campogram-pitch::before {
@@ -1661,9 +1677,9 @@ p {
 .campogram-pitch__content {
   align-items: stretch;
   display: grid;
-  gap: 0.9rem;
-  grid-template-columns: minmax(170px, 0.72fr) minmax(460px, 1.42fr) minmax(300px, 1.03fr) minmax(410px, 1.22fr) minmax(170px, 0.72fr);
-  min-height: 600px;
+  gap: 0.72rem;
+  grid-template-columns: minmax(148px, 0.68fr) minmax(392px, 1.38fr) minmax(252px, 0.96fr) minmax(348px, 1.12fr) minmax(148px, 0.68fr);
+  min-height: 574px;
   position: relative;
   z-index: 1;
 }
@@ -1671,7 +1687,7 @@ p {
 .campogram-pitch-line {
   align-items: stretch;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.62rem;
 }
 
 .campogram-pitch-line--gk,
@@ -1687,7 +1703,7 @@ p {
 
 .campogram-pitch-line--midfield {
   align-content: center;
-  gap: 1rem;
+  gap: 0.82rem;
   grid-template-rows: repeat(2, auto);
   justify-items: center;
 }
@@ -1704,10 +1720,10 @@ p {
   border-radius: 22px;
   box-shadow: 0 14px 34px rgba(10, 10, 10, 0.14);
   display: grid;
-  gap: 0.55rem;
+  gap: 0.48rem;
   grid-template-rows: auto 1fr;
   min-height: 98px;
-  padding: 0.52rem;
+  padding: 0.44rem;
 }
 
 .campogram-pitch-position__head {
@@ -1720,32 +1736,32 @@ p {
   background: #0a0a0a;
   border-radius: 999px;
   color: #e7d21a;
-  font-size: 0.76rem;
+  font-size: 0.72rem;
   font-weight: 950;
   margin: 0;
-  padding: 0.28rem 0.58rem;
+  padding: 0.24rem 0.5rem;
 }
 
 .campogram-pitch-position__head span {
   background: #ffffff;
   border-radius: 999px;
   color: #111111;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 950;
-  padding: 0.2rem 0.46rem;
+  padding: 0.18rem 0.42rem;
 }
 
 .campogram-pitch-position__players {
   align-content: start;
   display: grid;
-  gap: 0.3rem;
-  grid-template-columns: repeat(auto-fit, minmax(102px, 1fr));
+  gap: 0.26rem;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
 }
 
 .campogram-pitch-line--midfield .campogram-pitch-position {
   justify-self: center;
-  max-width: 390px;
-  min-height: 220px;
+  max-width: 348px;
+  min-height: 208px;
   width: 100%;
 }
 
@@ -1766,10 +1782,10 @@ p {
   border-radius: 22px;
   box-shadow: 0 14px 34px rgba(10, 10, 10, 0.08);
   display: flex;
-  gap: 1.4rem;
+  gap: 1rem;
   justify-content: center;
   margin-top: 0.75rem;
-  padding: 0.75rem 1rem;
+  padding: 0.68rem 0.92rem;
   width: 100%;
 }
 
@@ -1786,20 +1802,20 @@ p {
 .campogram-pitch-legend > div {
   align-items: center;
   display: flex;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .campogram-pitch-legend__items {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.34rem 0.55rem;
+  gap: 0.3rem 0.45rem;
 }
 
 .campogram-pitch-legend__items span {
   align-items: center;
   color: #3f3f38;
   display: inline-flex;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 900;
   gap: 0.28rem;
   white-space: nowrap;
@@ -1825,8 +1841,8 @@ p {
   cursor: pointer;
   display: grid;
   gap: 0.07rem;
-  min-height: 64px;
-  padding: 0.34rem 0.4rem;
+  min-height: 60px;
+  padding: 0.3rem 0.36rem;
   text-align: left;
   transition:
     border-color 160ms ease,
@@ -1845,14 +1861,14 @@ p {
 
 .campogram-compact-card__name {
   color: #111111;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 950;
   line-height: 1.05;
 }
 
 .campogram-compact-card__club {
   color: #4f4f49;
-  font-size: 0.58rem;
+  font-size: 0.55rem;
   font-weight: 850;
   line-height: 1.05;
   overflow: hidden;
@@ -1863,7 +1879,7 @@ p {
 
 .campogram-compact-card__meta {
   color: #66665f;
-  font-size: 0.55rem;
+  font-size: 0.52rem;
   font-weight: 800;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1873,12 +1889,57 @@ p {
 .campogram-compact-card em {
   border: 1px solid rgba(10, 10, 10, 0.12);
   border-radius: 999px;
-  font-size: 0.52rem;
+  font-size: 0.49rem;
   font-style: normal;
   font-weight: 950;
   justify-self: start;
   margin-top: 0.1rem;
   padding: 0.08rem 0.32rem;
+}
+
+@media (max-width: 1560px) {
+  .campogram-pitch {
+    min-width: 1260px;
+    padding: 0.92rem;
+  }
+
+  .campogram-pitch::before {
+    inset: 0.92rem;
+  }
+
+  .campogram-pitch::after {
+    height: calc(100% - 1.84rem);
+    top: 0.92rem;
+  }
+
+  .campogram-pitch__content {
+    gap: 0.62rem;
+    grid-template-columns: minmax(140px, 0.66fr) minmax(372px, 1.34fr) minmax(236px, 0.94fr) minmax(332px, 1.08fr) minmax(140px, 0.66fr);
+    min-height: 556px;
+  }
+
+  .campogram-pitch-line--midfield .campogram-pitch-position {
+    max-width: 330px;
+    min-height: 198px;
+  }
+
+  .campogram-pitch-position__players {
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  }
+}
+
+@media (max-width: 1340px) {
+  .campogram-pitch {
+    min-width: 1180px;
+  }
+
+  .campogram-pitch__content {
+    grid-template-columns: minmax(132px, 0.64fr) minmax(348px, 1.28fr) minmax(222px, 0.9fr) minmax(312px, 1.04fr) minmax(132px, 0.64fr);
+  }
+
+  .campogram-pitch-line--midfield .campogram-pitch-position {
+    max-width: 312px;
+  }
 }
 
 .campogram-classic-list {
