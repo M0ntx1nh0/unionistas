@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ObjectivePlayerMatch, PlayerSummary, ScoutingReport } from "../types";
+import type { ObjectivePlayer, ObjectivePlayerMatch, PlayerSummary, ScoutingReport } from "../types";
 import { formatDate } from "../utils/format";
 
 function normalizeKey(value: string) {
@@ -125,7 +125,7 @@ const OBJECTIVE_METRICS = [
 
 const OBJECTIVE_METRIC_LABELS = new Map<string, string>(OBJECTIVE_METRICS);
 
-type ObjectiveRadarData = {
+export type ObjectiveRadarData = {
   params?: string[];
   values?: number[];
   slice_colors?: string[];
@@ -138,7 +138,28 @@ type ObjectiveRadarData = {
   fallback_reason?: string | null;
 };
 
-type ObjectiveRadarMode = "specific" | "general";
+export type ObjectiveRadarMode = "specific" | "general";
+export type ObjectiveRadarItem = {
+  color: string;
+  key: string;
+  label: string;
+  value: number;
+  category: "attack" | "possession" | "defense" | "other";
+};
+
+export type ObjectiveRadarBlockBalance = {
+  key: string;
+  title: string;
+  className: string;
+  average: number;
+};
+
+export type ObjectiveSimilarCandidate = {
+  objectivePlayer: ObjectivePlayer;
+  radar: ObjectiveRadarData;
+  similarity: number;
+  blockBalance: ObjectiveRadarBlockBalance[];
+};
 
 function verdictClass(value: string | null | undefined) {
   const rawValue = value || "Sin valoración";
@@ -151,18 +172,18 @@ function reportToneClass(value: string | null | undefined) {
   return verdictClass(value).replace("verdict-", "report-tone-");
 }
 
-function objectiveStatusLabel(value: string | null | undefined) {
+export function objectiveStatusLabel(value: string | null | undefined) {
   if (value === "seguro") return "Match seguro";
   if (value === "probable") return "Match probable";
   if (value === "dudoso") return "Match dudoso";
   return "Sin match";
 }
 
-function objectiveStatusClass(value: string | null | undefined) {
+export function objectiveStatusClass(value: string | null | undefined) {
   return `objective-status objective-status--${value || "sin-match"}`;
 }
 
-function objectiveMatchRank(value: string | null | undefined) {
+export function objectiveMatchRank(value: string | null | undefined) {
   return { seguro: 0, probable: 1, dudoso: 2, sin_match: 3 }[value || "sin_match"] ?? 9;
 }
 
@@ -183,12 +204,12 @@ function formatFoot(value: string | null | undefined) {
   return value || "";
 }
 
-function metricNumber(value: unknown) {
+export function metricNumber(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function getObjectiveRadarData(value: unknown): ObjectiveRadarData | null {
+export function getObjectiveRadarData(value: unknown): ObjectiveRadarData | null {
   if (!value || typeof value !== "object") return null;
   const radar = value as ObjectiveRadarData;
   if (!Array.isArray(radar.params) || !Array.isArray(radar.values)) return null;
@@ -206,13 +227,18 @@ function polarPoint(center: number, radius: number, angle: number, value: number
 
 function buildRadarPoints(values: number[], center = 142, radius = 92) {
   const total = values.length;
-  return values
+  const points = values
     .map((value, index) => {
       const angle = -Math.PI / 2 + (index * Math.PI * 2) / total;
       const point = polarPoint(center, radius, angle, value);
       return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
-    })
-    .join(" ");
+    });
+
+  if (points.length > 2) {
+    points.push(points[0]);
+  }
+
+  return points.join(" ");
 }
 
 function buildRadarPointList(values: number[], center = 142, radius = 92) {
@@ -308,11 +334,169 @@ function radarCategoryFromColor(color: string | undefined) {
   return "other";
 }
 
-function radarPercentileClass(value: number) {
+export function radarPercentileClass(value: number) {
   if (value >= 80) return "objective-radar-value--elite";
   if (value >= 50) return "objective-radar-value--good";
   if (value >= 25) return "objective-radar-value--medium";
   return "objective-radar-value--low";
+}
+
+export function getObjectiveRadarItems(radar: ObjectiveRadarData): ObjectiveRadarItem[] {
+  const params = radar.params || [];
+  const values = (radar.values || []).map((value) => Number(value) || 0);
+  const colors = radar.slice_colors || [];
+
+  return params.map((label, index) => ({
+    color: colors[index] || "#16813a",
+    key: `${label}-${index}`,
+    label: formatRadarMetricLabel(label),
+    value: values[index] || 0,
+    category: radarCategoryFromColor(colors[index]),
+  }));
+}
+
+export function getObjectiveRadarBlockBalance(items: ObjectiveRadarItem[]): ObjectiveRadarBlockBalance[] {
+  const groups = [
+    {
+      key: "attack",
+      title: "Ataque",
+      className: "legend-attack",
+      items: items.filter((item) => item.category === "attack").slice(0, 5),
+    },
+    {
+      key: "possession",
+      title: "Posesión",
+      className: "legend-possession",
+      items: items.filter((item) => item.category === "possession").slice(0, 5),
+    },
+    {
+      key: "defense",
+      title: "Defensa",
+      className: "legend-defense",
+      items: items.filter((item) => item.category === "defense").slice(0, 5),
+    },
+  ];
+
+  return groups.map((group) => {
+    const values = group.items.map((item) => item.value);
+    const average = values.length
+      ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+      : 0;
+    return {
+      key: group.key,
+      title: group.title,
+      className: group.className,
+      average,
+    };
+  });
+}
+
+export function getObjectiveRadarForMode(
+  player: ObjectivePlayer | undefined,
+  mode: ObjectiveRadarMode,
+): ObjectiveRadarData | null {
+  if (!player) return null;
+  const radarSpecific = getObjectiveRadarData(player.metrics?._radar_specific);
+  const radarGeneral = getObjectiveRadarData(player.metrics?._radar_general);
+  const radarFallback = getObjectiveRadarData(player.metrics?._radar);
+  return mode === "specific" ? radarSpecific || radarFallback : radarGeneral || radarFallback;
+}
+
+export function calculateRadarSimilarity(baseRadar: ObjectiveRadarData, candidateRadar: ObjectiveRadarData) {
+  const baseItems = getObjectiveRadarItems(baseRadar);
+  const candidateValues = new Map(
+    getObjectiveRadarItems(candidateRadar).map((item) => [normalizeKey(item.label), item.value]),
+  );
+  const sharedValues = baseItems
+    .map((item) => {
+      const candidateValue = candidateValues.get(normalizeKey(item.label));
+      if (candidateValue === undefined) return null;
+      return Math.abs(item.value - candidateValue);
+    })
+    .filter((value): value is number => value !== null);
+
+  if (!sharedValues.length) return null;
+
+  const averageDifference =
+    sharedValues.reduce((sum, value) => sum + value, 0) / sharedValues.length;
+  return Math.max(0, Math.min(100, Math.round(100 - averageDifference)));
+}
+
+function buildComparableRadarValues(
+  baseRadar: ObjectiveRadarData,
+  candidateRadar: ObjectiveRadarData,
+) {
+  const baseItems = getObjectiveRadarItems(baseRadar);
+  const candidateValues = new Map(
+    getObjectiveRadarItems(candidateRadar).map((item) => [normalizeKey(item.label), item.value]),
+  );
+
+  const sharedItems = baseItems
+    .map((item) => {
+      const candidateValue = candidateValues.get(normalizeKey(item.label));
+      if (candidateValue === undefined) return null;
+      return {
+        label: item.label,
+        selectedValue: item.value,
+        candidateValue,
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        label: string;
+        selectedValue: number;
+        candidateValue: number;
+      } => item !== null,
+    );
+
+  return {
+    labels: sharedItems.map((item) => item.label),
+    selectedValues: sharedItems.map((item) => item.selectedValue),
+    candidateValues: sharedItems.map((item) => item.candidateValue),
+  };
+}
+
+export function formatObjectiveUpdatedAt(value: string | null | undefined) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parsed);
+}
+
+export function formatObjectiveAge(player: ObjectivePlayer) {
+  const birthYear = player.birth_year;
+  if (!birthYear) return "-";
+  return `${new Date().getFullYear() - birthYear} años`;
+}
+
+export function getUnionValue(blockBalance: ObjectiveRadarBlockBalance[]) {
+  const values = blockBalance.map((group) => group.average).filter((value) => Number.isFinite(value));
+  if (!values.length) return 0;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+export function formatComparableVolume(player: ObjectivePlayer) {
+  const minutes = metricNumber(player.metrics?.minutes_on_field);
+  const matches = metricNumber(player.metrics?.total_matches);
+
+  if (minutes && matches) return `${Math.round(minutes)} min · ${Math.round(matches)} pj`;
+  if (minutes) return `${Math.round(minutes)} min`;
+  if (matches) return `${Math.round(matches)} pj`;
+  return "";
+}
+
+export function objectivePlayerIdentityKey(player: ObjectivePlayer) {
+  return [
+    normalizeKey(player.full_name || player.name || ""),
+    normalizeKey(player.current_team_name || ""),
+    normalizeKey(player.primary_position_label || ""),
+  ].join("|");
 }
 
 function buildConsensus(reports: ScoutingReport[]) {
@@ -363,13 +547,15 @@ function summarizeRepeated(values: Array<string | null>) {
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "es"));
 }
 
-function ObjectiveRadar({
+export function ObjectiveRadar({
+  compact = false,
   mode,
   onModeChange,
   radar,
   radarGeneral,
   radarSpecific,
 }: {
+  compact?: boolean;
   mode: ObjectiveRadarMode;
   onModeChange: (mode: ObjectiveRadarMode) => void;
   radar: ObjectiveRadarData;
@@ -424,9 +610,10 @@ function ObjectiveRadar({
       : 0;
     return { ...group, average };
   });
+  const unionValue = getUnionValue(radarBlockBalance);
 
   return (
-    <div className="objective-radar-card">
+    <div className={`objective-radar-card${compact ? " objective-radar-card--compact" : ""}`}>
       <div className="objective-radar-card__head">
         <div>
           <span className="profile-kicker">Radar Wyscout</span>
@@ -458,7 +645,7 @@ function ObjectiveRadar({
       {radar.fallback_reason ? (
         <div className="objective-radar-warning">{radar.fallback_reason}</div>
       ) : null}
-      <div className="objective-radar-layout">
+      <div className={`objective-radar-layout${compact ? " objective-radar-layout--compact" : ""}`}>
         <svg aria-label="Radar Wyscout" className="objective-radar" viewBox="0 0 340 340">
           {gridLevels.map((level) => (
             <polygon
@@ -511,74 +698,81 @@ function ObjectiveRadar({
             );
           })}
           <polygon className="objective-radar__area" points={buildRadarPoints(values, center, radius)} />
-          <polyline className="objective-radar__stroke" points={buildRadarPoints(values, center, radius)} />
+          <polygon className="objective-radar__stroke" points={buildRadarPoints(values, center, radius)} />
         </svg>
-        <div className="objective-radar-values">
-          {radarGroups.map((group) => (
-            <div className="objective-radar-group" key={group.key}>
-              <h4>
-                <i className={group.className} />
-                {group.title}
-              </h4>
-              <div className="objective-radar-group__items">
-                {group.items.map((item) => (
-                  <div
-                    className={`objective-radar-value ${radarPercentileClass(item.value)}`}
-                    key={item.key}
-                  >
-                    <strong>{item.value}</strong>
-                    <p>{item.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-          <p className="objective-radar-note">
-            Los números son percentiles frente a la muestra seleccionada.
-          </p>
-            <div className="objective-radar-insights">
-            <div className="objective-radar-insight-card objective-radar-insight-card--split">
-              <div>
-                <h4>Fortalezas</h4>
-                {radarStrengths.map((item) => (
-                  <div className="objective-radar-insight-row" key={`strength-${item.key}`}>
-                    <span className={radarPercentileClass(item.value)}>{item.value}</span>
-                    <p>{item.label}</p>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <h4>A revisar</h4>
-                {radarAlerts.map((item) => (
-                  <div className="objective-radar-insight-row" key={`alert-${item.key}`}>
-                    <span className={radarPercentileClass(item.value)}>{item.value}</span>
-                    <p>{item.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="objective-radar-insight-card">
-              <h4>Balance por bloques</h4>
-              {radarBlockBalance.map((group) => (
-                <div className="objective-radar-balance-row" key={`balance-${group.key}`}>
-                  <div>
-                    <span>
-                      <i className={group.className} />
-                      {group.title}
-                    </span>
-                    <strong>{group.average}</strong>
-                  </div>
-                  <div className="objective-radar-balance-track">
-                    <span
-                      className={radarPercentileClass(group.average)}
-                      style={{ width: `${Math.max(4, group.average)}%` }}
-                    />
-                  </div>
+        {!compact ? (
+          <div className="objective-radar-values">
+            {radarGroups.map((group) => (
+              <div className="objective-radar-group" key={group.key}>
+                <h4>
+                  <i className={group.className} />
+                  {group.title}
+                </h4>
+                <div className="objective-radar-group__items">
+                  {group.items.map((item) => (
+                    <div
+                      className={`objective-radar-value ${radarPercentileClass(item.value)}`}
+                      key={item.key}
+                    >
+                      <strong>{item.value}</strong>
+                      <p>{item.label}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+            ))}
+            <p className="objective-radar-note">
+              Los números son percentiles frente a la muestra seleccionada.
+            </p>
+            <div className="objective-radar-insights">
+              <div className="objective-radar-insight-card objective-radar-insight-card--split">
+                <div>
+                  <h4>Fortalezas</h4>
+                  {radarStrengths.map((item) => (
+                    <div className="objective-radar-insight-row" key={`strength-${item.key}`}>
+                      <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                      <p>{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <h4>A revisar</h4>
+                  {radarAlerts.map((item) => (
+                    <div className="objective-radar-insight-row" key={`alert-${item.key}`}>
+                      <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                      <p>{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="objective-radar-insight-card">
+                <h4>Balance por bloques</h4>
+                <div className="objective-radar-union-value">
+                  <span>Union Value</span>
+                  <strong>{unionValue}</strong>
+                  <p>Promedio de Ataque, Posesión y Defensa</p>
+                </div>
+                {radarBlockBalance.map((group) => (
+                  <div className="objective-radar-balance-row" key={`balance-${group.key}`}>
+                    <div>
+                      <span>
+                        <i className={group.className} />
+                        {group.title}
+                      </span>
+                      <strong>{group.average}</strong>
+                    </div>
+                    <div className="objective-radar-balance-track">
+                      <span
+                        className={radarPercentileClass(group.average)}
+                        style={{ width: `${Math.max(4, group.average)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
       </div>
       <div className="objective-percentile-legend">
         <span><i className="percentile-low" />0-24 Bajo</span>
@@ -590,13 +784,119 @@ function ObjectiveRadar({
   );
 }
 
+function ObjectiveComparableMiniRadar({
+  candidateName,
+  candidateRadar,
+  selectedLabel,
+  selectedRadar,
+}: {
+  candidateName: string;
+  candidateRadar: ObjectiveRadarData;
+  selectedLabel: string;
+  selectedRadar: ObjectiveRadarData;
+}) {
+  const { candidateValues, labels, selectedValues } = buildComparableRadarValues(
+    selectedRadar,
+    candidateRadar,
+  );
+
+  if (labels.length < 3) return null;
+
+  const center = 116;
+  const radius = 68;
+  const labelRadius = 108;
+  const gridLevels = [25, 50, 75, 100];
+  const labelPoints = buildRadarPointList(new Array(labels.length).fill(100), center, labelRadius);
+  const selectedPoints = buildRadarPoints(selectedValues, center, radius);
+  const candidatePoints = buildRadarPoints(candidateValues, center, radius);
+
+  return (
+    <div className="objective-comparable-radar">
+      <div className="objective-comparable-radar__legend">
+        <span>
+          <i className="objective-comparable-radar__swatch objective-comparable-radar__swatch--selected" />
+          {selectedLabel}
+        </span>
+        <span>
+          <i className="objective-comparable-radar__swatch objective-comparable-radar__swatch--candidate" />
+          {candidateName}
+        </span>
+      </div>
+      <svg
+        aria-label={`Comparativa radar entre ${selectedLabel} y ${candidateName}`}
+        className="objective-comparable-radar__svg"
+        viewBox="0 0 232 248"
+      >
+        {gridLevels.map((level) => (
+          <polygon
+            className="objective-comparable-radar__grid"
+            key={level}
+            points={buildRadarPoints(new Array(labels.length).fill(level), center, radius)}
+          />
+        ))}
+        {labels.map((label, index) => {
+          const angle = -Math.PI / 2 + (index * Math.PI * 2) / labels.length;
+          const axisEnd = polarPoint(center, radius, angle, 100);
+          const labelPoint = labelPoints[index];
+          const labelLines = splitRadarLabel(label);
+          return (
+            <g key={`${label}-${index}`}>
+              <line
+                className="objective-comparable-radar__axis"
+                x1={center}
+                x2={axisEnd.x}
+                y1={center}
+                y2={axisEnd.y}
+              />
+              <text
+                className="objective-comparable-radar__label"
+                textAnchor={radarTextAnchor(labelPoint.x, center)}
+                x={labelPoint.x}
+                y={labelPoint.y}
+              >
+                {labelLines.map((line, lineIndex) => (
+                  <tspan
+                    dy={lineIndex === 0 ? 0 : 9}
+                    key={`${label}-${line}`}
+                    x={labelPoint.x}
+                  >
+                    {line}
+                  </tspan>
+                ))}
+              </text>
+            </g>
+          );
+        })}
+        <polygon
+          className="objective-comparable-radar__area objective-comparable-radar__area--selected"
+          points={selectedPoints}
+        />
+        <polygon
+          className="objective-comparable-radar__stroke objective-comparable-radar__stroke--selected"
+          points={selectedPoints}
+        />
+        <polygon
+          className="objective-comparable-radar__area objective-comparable-radar__area--candidate"
+          points={candidatePoints}
+        />
+        <polygon
+          className="objective-comparable-radar__stroke objective-comparable-radar__stroke--candidate"
+          points={candidatePoints}
+        />
+      </svg>
+    </div>
+  );
+}
+
 export function PlayersView({
   focusPlayerName,
+  objectivePlayers,
   objectiveMatches,
   players,
   reports,
 }: {
   focusPlayerName?: string;
+  objectivePlayers: ObjectivePlayer[];
   objectiveMatches: ObjectivePlayerMatch[];
   players: PlayerSummary[];
   reports: ScoutingReport[];
@@ -710,6 +1010,81 @@ export function PlayersView({
     objectiveRadarMode === "specific"
       ? objectiveRadarSpecific || objectiveRadarFallback
       : objectiveRadarGeneral || objectiveRadarFallback;
+  const objectiveRadarUpdatedAt = formatObjectiveUpdatedAt(objectivePlayer?.updated_at);
+  const objectiveRadarComparisonKey = normalizeKey(objectiveRadar?.comparison_label || "");
+  const objectiveRadarCompetitionKey = normalizeKey(
+    objectiveRadar?.competition_name || objectivePlayer?.domestic_competition_name || "",
+  );
+  const similarObjectivePlayers = objectivePlayer && objectiveRadar
+    ? (() => {
+        const uniqueCandidates = new Map<string, ObjectiveSimilarCandidate>();
+
+        objectivePlayers
+          .filter((candidate) => candidate.id !== objectivePlayer.id)
+          .forEach((candidate) => {
+          const candidateRadar = getObjectiveRadarForMode(candidate, objectiveRadarMode);
+          if (!candidateRadar) return;
+
+          const candidateComparisonKey = normalizeKey(candidateRadar.comparison_label || "");
+          const candidateCompetitionKey = normalizeKey(
+            candidateRadar.competition_name || candidate.domestic_competition_name || "",
+          );
+
+          if (
+            objectiveRadarComparisonKey &&
+            candidateComparisonKey &&
+            candidateComparisonKey !== objectiveRadarComparisonKey
+          ) {
+            return;
+          }
+
+          if (
+            objectiveRadarCompetitionKey &&
+            candidateCompetitionKey &&
+            candidateCompetitionKey !== objectiveRadarCompetitionKey
+          ) {
+            return;
+          }
+
+          const similarity = calculateRadarSimilarity(objectiveRadar, candidateRadar);
+          if (similarity === null) return;
+
+          const comparableCandidate = {
+            objectivePlayer: candidate,
+            radar: candidateRadar,
+            similarity,
+            blockBalance: getObjectiveRadarBlockBalance(getObjectiveRadarItems(candidateRadar)),
+          };
+
+          const identityKey = objectivePlayerIdentityKey(candidate);
+          const existingCandidate = uniqueCandidates.get(identityKey);
+          if (
+            !existingCandidate ||
+            comparableCandidate.similarity > existingCandidate.similarity ||
+            (
+              comparableCandidate.similarity === existingCandidate.similarity &&
+              (comparableCandidate.radar.sample_count || 0) > (existingCandidate.radar.sample_count || 0)
+            )
+          ) {
+            uniqueCandidates.set(identityKey, comparableCandidate);
+          }
+        });
+
+        return Array.from(uniqueCandidates.values())
+          .sort(
+          (a, b) => {
+            const aName = a.objectivePlayer.full_name || a.objectivePlayer.name || "";
+            const bName = b.objectivePlayer.full_name || b.objectivePlayer.name || "";
+            return (
+              b.similarity - a.similarity ||
+              (b.radar.sample_count || 0) - (a.radar.sample_count || 0) ||
+              aName.localeCompare(bName, "es")
+            );
+          },
+          )
+          .slice(0, 3);
+      })()
+    : [];
 
   useEffect(() => {
     if (objectiveRadarMode === "specific" && !objectiveRadarSpecific && objectiveRadarGeneral) {
@@ -940,13 +1315,118 @@ export function PlayersView({
                   ))}
                 </div>
                 {objectiveRadar ? (
-                  <ObjectiveRadar
-                    mode={objectiveRadarMode}
-                    onModeChange={setObjectiveRadarMode}
-                    radar={objectiveRadar}
-                    radarGeneral={objectiveRadarGeneral}
-                    radarSpecific={objectiveRadarSpecific}
-                  />
+                  <>
+                    <ObjectiveRadar
+                      mode={objectiveRadarMode}
+                      onModeChange={setObjectiveRadarMode}
+                      radar={objectiveRadar}
+                      radarGeneral={objectiveRadarGeneral}
+                      radarSpecific={objectiveRadarSpecific}
+                    />
+                    <div className="objective-similar-section">
+                      <div className="objective-similar-section__head">
+                        <div>
+                          <span className="profile-kicker">Comparables Wyscout</span>
+                          <h3>3 jugadores similares</h3>
+                        </div>
+                        <p>
+                          {objectiveRadarMode === "specific"
+                            ? "Según posición específica"
+                            : "Según posición general"}
+                          {" · "}
+                          {objectiveRadar.competition_name || objectivePlayer.domestic_competition_name || "Competición no disponible"}
+                          {objectiveRadarUpdatedAt ? ` · actualizado ${objectiveRadarUpdatedAt}` : ""}
+                        </p>
+                      </div>
+                      {similarObjectivePlayers.length ? (
+                        <div className="objective-similar-grid">
+                          {similarObjectivePlayers.map((candidate) => (
+                            <article className="objective-similar-card" key={candidate.objectivePlayer.id}>
+                              <div className="objective-similar-card__top">
+                                <div className="objective-similar-photo-wrap">
+                                  {candidate.objectivePlayer.image ? (
+                                    <img
+                                      alt={candidate.objectivePlayer.full_name || candidate.objectivePlayer.name || "Jugador"}
+                                      className="objective-similar-photo"
+                                      src={candidate.objectivePlayer.image}
+                                    />
+                                  ) : (
+                                    <div className="objective-similar-photo objective-similar-photo--empty">
+                                      Sin foto
+                                    </div>
+                                  )}
+                                  {candidate.objectivePlayer.current_team_logo ? (
+                                    <img
+                                      alt={candidate.objectivePlayer.current_team_name || "Equipo"}
+                                      className="objective-similar-team-logo"
+                                      src={candidate.objectivePlayer.current_team_logo}
+                                    />
+                                  ) : null}
+                                </div>
+                                <div className="objective-similar-card__content">
+                                  <div className="objective-similar-card__title-row">
+                                    <div>
+                                      <h4>{candidate.objectivePlayer.full_name || candidate.objectivePlayer.name}</h4>
+                                      <p>{candidate.objectivePlayer.current_team_name || "Sin equipo"}</p>
+                                    </div>
+                                    <div className="objective-similar-score-stack">
+                                      <strong className="objective-similar-score">
+                                        {candidate.similarity}%
+                                      </strong>
+                                      <span className="objective-similar-union-value">
+                                        Union Value {getUnionValue(candidate.blockBalance)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="objective-similar-meta">
+                                    <span>{formatObjectiveAge(candidate.objectivePlayer)}</span>
+                                    <span>
+                                      {candidate.objectivePlayer.primary_position_label || "Sin posición"}
+                                    </span>
+                                    <span>
+                                      {candidate.objectivePlayer.domestic_competition_name || "Sin competición"}
+                                    </span>
+                                    {formatComparableVolume(candidate.objectivePlayer) ? (
+                                      <span>{formatComparableVolume(candidate.objectivePlayer)}</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="objective-similar-bars">
+                                {candidate.blockBalance.map((group) => (
+                                  <div className="objective-similar-bar" key={`${candidate.objectivePlayer.id}-${group.key}`}>
+                                    <div>
+                                      <span>
+                                        <i className={group.className} />
+                                        {group.title}
+                                      </span>
+                                      <strong>{group.average}</strong>
+                                    </div>
+                                    <div className="objective-similar-track">
+                                      <span
+                                        className="objective-similar-track__fill"
+                                        style={{ width: `${Math.max(4, group.average)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <ObjectiveComparableMiniRadar
+                                candidateName={candidate.objectivePlayer.full_name || candidate.objectivePlayer.name || "Comparable"}
+                                candidateRadar={candidate.radar}
+                                selectedLabel={objectivePlayer.full_name || objectivePlayer.name || "Jugador"}
+                                selectedRadar={objectiveRadar}
+                              />
+                            </article>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="objective-similar-empty">
+                          No hay una muestra suficiente para mostrar comparables fiables con el filtro actual.
+                        </div>
+                      )}
+                    </div>
+                  </>
                 ) : (
                   <div className="objective-radar-card objective-radar-card--empty">
                     <strong>Radar Wyscout no disponible</strong>

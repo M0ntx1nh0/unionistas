@@ -113,6 +113,7 @@ export type ObjectivePlayer = {
   foot: string | null;
   height: number | null;
   weight: number | null;
+  updated_at: string | null;
   metrics: Record<string, unknown>;
 };
 

@@ -1,6 +1,62 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Campogram, CampogramPlayer, CampogramReport, UserProfile } from "../types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+/**
+ * Como useState pero persiste el valor en sessionStorage.
+ * Sobrevive desmontajes del componente por refrescos de token u otras causas.
+ */
+function useSessionState<T>(key: string, initial: T): [T, (value: T | ((prev: T) => T)) => void] {
+  const [state, setStateRaw] = useState<T>(() => {
+    try {
+      const stored = sessionStorage.getItem(key);
+      return stored !== null ? (JSON.parse(stored) as T) : initial;
+    } catch {
+      return initial;
+    }
+  });
+
+  const setState = useCallback(
+    (value: T | ((prev: T) => T)) => {
+      setStateRaw((prev) => {
+        const next = typeof value === "function" ? (value as (p: T) => T)(prev) : value;
+        try {
+          sessionStorage.setItem(key, JSON.stringify(next));
+        } catch {
+          // sessionStorage lleno o no disponible — continuar sin persistir
+        }
+        return next;
+      });
+    },
+    [key],
+  );
+
+  return [state, setState];
+}
+import type {
+  Campogram,
+  CampogramPlayer,
+  CampogramReport,
+  ObjectivePlayer,
+  ObjectivePlayerMatch,
+  UserProfile,
+} from "../types";
 import { formatDate } from "../utils/format";
+import {
+  calculateRadarSimilarity,
+  formatComparableVolume,
+  formatObjectiveAge,
+  formatObjectiveUpdatedAt,
+  getObjectiveRadarBlockBalance,
+  getObjectiveRadarForMode,
+  getObjectiveRadarItems,
+  getUnionValue,
+  ObjectiveRadar,
+  objectiveMatchRank,
+  objectivePlayerIdentityKey,
+  objectiveStatusClass,
+  objectiveStatusLabel,
+  radarPercentileClass,
+  type ObjectiveRadarMode,
+} from "./PlayersView";
 
 const POSITION_ORDER = [
   "POR 1",
@@ -261,11 +317,15 @@ function buildCanonicalPlayerIdMap(players: CampogramPlayer[], canonicalPlayers:
 }
 
 function reportIdentity(report: CampogramReport) {
+  // El nombre del equipo queda intencionalmente fuera de la clave:
+  // el mismo informe puede llegar con grafías distintas del equipo
+  // ("Juventus Torremolinos" vs "JUVENTUD TORREMOLINOS") y provocar
+  // duplicados aunque el contenido sea idéntico. La huella se basa
+  // en campograma + jugador + scout + contenido de los tres bloques.
   return [
     report.campogram_id || normalizeKey(report.campogram_name),
     normalizeKey(report.player_name),
     normalizeKey(report.scout_email || report.scout_name),
-    normalizeKey(report.team_name),
     normalizePosition(report.position),
     normalizeVerdict(report.verdict),
     textValue(report.report_date),
@@ -333,6 +393,506 @@ function buildReportMap(
 
 function playerStatus(player: CampogramPlayer, reportMap: Map<string, CampogramReport[]>) {
   return consensusFromReports(reportMap.get(player.id) || []);
+}
+
+// Palabras irrelevantes en nombres de equipos (artículos, prefijos, abreviaciones comunes)
+const TEAM_STOPWORDS = new Set([
+  "cf", "ud", "cd", "sd", "rc", "fc", "club", "real", "de", "la", "el",
+  "los", "las", "at", "b", "ii", "c", "juventud",
+]);
+
+/**
+ * Normaliza el nombre del equipo eliminando stopwords para comparaciones más robustas.
+ * "ZAMORA CF" → "zamora", "Real Avilés" → "aviles", "Atlético Madrid B" → "atletico madrid"
+ */
+function normalizeTeamKey(team: string | null | undefined): string {
+  return normalizeKey(team || "")
+    .split(/\s+/)
+    .filter((t) => t && !TEAM_STOPWORDS.has(t))
+    .join(" ");
+}
+
+/**
+ * Solapamiento de tokens entre dos nombres de equipo normalizados (0–1).
+ * Incluye coincidencia por subcadena (≥4 chars) para cubrir abreviaciones:
+ * "nastic" ⊂ "gimnastic" → 1.0  ("Nástic" = "Gimnàstic Tarragona")
+ */
+function teamTokenOverlap(teamA: string, teamB: string): number {
+  const tA = teamA.split(/\s+/).filter(Boolean);
+  const tB = teamB.split(/\s+/).filter(Boolean);
+  if (!tA.length || !tB.length) return 0;
+  let shared = 0;
+  for (const a of tA) {
+    const match = tB.some(
+      (b) =>
+        b === a ||
+        (a.length >= 4 && b.includes(a)) ||
+        (b.length >= 4 && a.includes(b)),
+    );
+    if (match) shared++;
+  }
+  return shared / Math.min(tA.length, tB.length);
+}
+
+function objectiveTeamKey(player: ObjectivePlayer | undefined) {
+  return normalizeTeamKey(player?.current_team_name || player?.last_club_name || "");
+}
+
+function compactMetricLabel(label: string) {
+  return label.length > 24 ? `${label.slice(0, 24)}…` : label;
+}
+
+/** Devuelve el dataset de Wyscout correspondiente a la categoría del campograma, o null si no aplica. */
+function campogramCategoryToDataset(category: string | null): string | null {
+  const key = normalizeKey(category || "");
+  if (key.includes("1 rfef") || key.includes("1rfef") || key.includes("primera division rfef")) {
+    return "1rfef_2025_26";
+  }
+  if (key.includes("2 rfef") || key.includes("2rfef") || key.includes("segunda division rfef")) {
+    return "2rfef_2025_26";
+  }
+  return null;
+}
+
+/** Similitud Jaccard entre tokens de dos nombres normalizados (0–1). */
+function nameTokenSimilarity(a: string, b: string): number {
+  const tokensA = new Set(normalizeKey(a).split(/\s+/).filter(Boolean));
+  const tokensB = new Set(normalizeKey(b).split(/\s+/).filter(Boolean));
+  if (!tokensA.size || !tokensB.size) return 0;
+  let shared = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) shared++;
+  }
+  const union = tokensA.size + tokensB.size - shared;
+  return union > 0 ? shared / union : 0;
+}
+
+/**
+ * Búsqueda directa en objectivePlayers por nombre + dataset derivado de la categoría.
+ * Se usa como fallback cuando el jugador no tiene informes subjetivos cruzados.
+ *
+ * Estrategia de scoring (mayor primero):
+ *  1. Coincidencia exacta normalizada → 1.0
+ *  2. Containment check: todos los tokens del campograma (≥2) aparecen en el nombre objetivo → 0.85
+ *  3. Apellido + equipo + inicial/prefijo del primer nombre → 0.70
+ *     ("Josh Farrell" ZAMORA CF → "J. Farrell"/"Joshua Farrell" Zamora)
+ *  4. Primer nombre + equipo (cubre cambio de apellido) → 0.60
+ *     ("Salifo Mendes" Guadalajara → "Salifo Caropitche" Guadalajara)
+ *     ("Marco Manchón" Extremadura → "Marco González" Extremadura)
+ *  5. Token único + equipo + inicial (apodos de un solo token) → 0.60
+ *     ("Dela" Celta Fortuna → "David De La Iglesia" Celta Fortuna)
+ *  6. Jaccard token similarity ≥ 0.4
+ */
+function findDirectObjectivePlayer(
+  player: CampogramPlayer,
+  objectivePlayers: ObjectivePlayer[],
+  minSimilarity = 0.4,
+): ObjectivePlayer | null {
+  const dataset = campogramCategoryToDataset(player.category);
+  if (!dataset) return null;
+
+  const playerNameKey = normalizeKey(player.player_name);
+  const playerTokens = playerNameKey.split(/\s+/).filter(Boolean);
+  const playerTeamKey = normalizeTeamKey(player.team_name);
+  let bestPlayer: ObjectivePlayer | null = null;
+  let bestScore = -1;
+
+  for (const op of objectivePlayers) {
+    if (op.objective_dataset !== dataset) continue;
+
+    const opFullKey = normalizeKey(op.full_name || "");
+    const opShortKey = normalizeKey(op.name || "");
+
+    // 1. Coincidencia exacta → mejor puntuación posible
+    if (opFullKey === playerNameKey || opShortKey === playerNameKey) {
+      if (1.0 > bestScore) {
+        bestScore = 1.0;
+        bestPlayer = op;
+      }
+      continue;
+    }
+
+    // 2. Containment: todos los tokens del campograma aparecen en el nombre objetivo (≥ 2 tokens)
+    let containScore = 0;
+    if (playerTokens.length >= 2) {
+      const opFullTokens = new Set(opFullKey.split(/\s+/).filter(Boolean));
+      const opShortTokens = new Set(opShortKey.split(/\s+/).filter(Boolean));
+      if (playerTokens.every((t) => opFullTokens.has(t)) || playerTokens.every((t) => opShortTokens.has(t))) {
+        containScore = 0.85;
+      }
+    }
+
+    const opTeamKey = playerTeamKey ? normalizeTeamKey(op.current_team_name) : "";
+    const teamOverlap = playerTeamKey && opTeamKey ? teamTokenOverlap(playerTeamKey, opTeamKey) : 0;
+
+    // 3. Apellido + equipo + inicial/prefijo del primer nombre
+    //    Cubre apodos abreviados: "Josh"→"Joshua", "Gero"→"Gerónimo", "Fran"→"Francisco"
+    let surnameTeamScore = 0;
+    if (playerTokens.length >= 2 && teamOverlap >= 0.4) {
+      const surname = playerTokens[playerTokens.length - 1];
+      const opFullTokens = new Set(opFullKey.split(/\s+/).filter(Boolean));
+      const opShortTokens = new Set(opShortKey.split(/\s+/).filter(Boolean));
+      if (opFullTokens.has(surname) || opShortTokens.has(surname)) {
+        const campFirstToken = playerTokens[0] ?? "";
+        const campFirstInitial = campFirstToken[0] ?? "";
+        const opFullFirstToken = opFullKey.split(/\s+/)[0] ?? "";
+        const opShortFirstToken = opShortKey.split(/\s+/)[0] ?? "";
+        const initialMatches =
+          campFirstInitial !== "" &&
+          (opFullFirstToken[0] === campFirstInitial ||
+            opShortFirstToken[0] === campFirstInitial ||
+            opShortFirstToken === campFirstInitial ||
+            opFullKey.split(/\s+/).some((t) => t.startsWith(campFirstToken)));
+        if (initialMatches) {
+          surnameTeamScore = 0.70;
+        }
+      }
+    }
+
+    // 4. Primer nombre + equipo (cubre cambio de apellido real vs apodo/mote)
+    //    "Salifo Mendes" Guadalajara → "Salifo Caropitche" Guadalajara
+    //    "Marco Manchón" Extremadura → "Marco González Martínez" Extremadura
+    let firstNameTeamScore = 0;
+    if (playerTokens.length >= 2 && teamOverlap >= 0.5) {
+      const firstName = playerTokens[0];
+      const opFullTokens = opFullKey.split(/\s+/).filter(Boolean);
+      if (opFullTokens.some((t) => t === firstName || t.startsWith(firstName))) {
+        firstNameTeamScore = 0.60;
+      }
+    }
+
+    // 5. Token único + equipo + subcadena en nombre concatenado
+    //    "Dela" Celta Fortuna → "David De La Iglesia Rey" Celta Fortuna
+    //    "dela" ⊂ "david"+"de"+"la"+"iglesia"+"rey" = "davidelaiglesiarey" ✓
+    //    Rechaza "Juanda" → "Jonnier Fernando Torres Bazán" porque "juanda" ∉ "jonnierfernandotorresbazan" ✓
+    let singleTokenTeamScore = 0;
+    if (playerTokens.length === 1 && teamOverlap >= 0.5) {
+      const campToken = playerTokens[0];
+      if (campToken.length >= 3) {
+        const opConcatKey = opFullKey.replace(/\s+/g, "");
+        if (opConcatKey.includes(campToken)) {
+          singleTokenTeamScore = 0.60;
+        }
+      }
+    }
+
+    // 6. Jaccard token similarity
+    const jaccardFull = nameTokenSimilarity(playerNameKey, op.full_name || "");
+    const jaccardShort = nameTokenSimilarity(playerNameKey, op.name || "");
+    const score = Math.max(containScore, surnameTeamScore, firstNameTeamScore, singleTokenTeamScore, jaccardFull, jaccardShort);
+
+    if (score >= minSimilarity && score > bestScore) {
+      bestScore = score;
+      bestPlayer = op;
+    }
+  }
+  return bestPlayer;
+}
+
+function buildCampogramObjectiveCandidates(
+  player: CampogramPlayer,
+  objectiveMatches: ObjectivePlayerMatch[],
+  objectivePlayersById: Map<string, ObjectivePlayer>,
+) {
+  const playerNameKey = normalizeKey(player.player_name);
+  const teamKey = normalizeTeamKey(player.team_name);
+  const positionKey = normalizeKey(player.position);
+
+  return objectiveMatches
+    .map((match) => {
+      const objectivePlayer =
+        match.objective_player ||
+        (match.objective_player_id ? objectivePlayersById.get(match.objective_player_id) : undefined);
+      if (!objectivePlayer) return null;
+
+      // Fuzzy name matching: exact → 1.0, Jaccard ≥ 0.5 → accepted
+      const exactMatch =
+        normalizeKey(match.scouting_player_name) === playerNameKey ||
+        normalizeKey(match.objective_full_name) === playerNameKey ||
+        normalizeKey(objectivePlayer.full_name || objectivePlayer.name) === playerNameKey;
+
+      const nameSimilarity = exactMatch
+        ? 1.0
+        : Math.max(
+            nameTokenSimilarity(match.scouting_player_name || "", player.player_name),
+            nameTokenSimilarity(match.objective_full_name || "", player.player_name),
+            nameTokenSimilarity(objectivePlayer.full_name || "", player.player_name),
+            nameTokenSimilarity(objectivePlayer.name || "", player.player_name),
+          );
+
+      if (nameSimilarity < 0.5) return null;
+
+      const objectivePlayerTeamKey = objectiveTeamKey(objectivePlayer);
+      const sameTeam = !teamKey || !objectivePlayerTeamKey || teamTokenOverlap(teamKey, objectivePlayerTeamKey) >= 0.4;
+      const samePosition =
+        !positionKey ||
+        positionKey === normalizeKey(objectivePlayer.primary_position_label) ||
+        positionKey === normalizeKey(objectivePlayer.secondary_position_label);
+
+      return {
+        match,
+        objectivePlayer,
+        nameSimilarity,
+        samePosition,
+        sameTeam,
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is {
+        match: ObjectivePlayerMatch;
+        objectivePlayer: ObjectivePlayer;
+        nameSimilarity: number;
+        samePosition: boolean;
+        sameTeam: boolean;
+      } => item !== null,
+    )
+    .sort((a, b) => {
+      if (a.sameTeam !== b.sameTeam) return a.sameTeam ? -1 : 1;
+      if (a.samePosition !== b.samePosition) return a.samePosition ? -1 : 1;
+      const statusDiff = objectiveMatchRank(a.match.match_status) - objectiveMatchRank(b.match.match_status);
+      if (statusDiff !== 0) return statusDiff;
+      const nameDiff = b.nameSimilarity - a.nameSimilarity;
+      if (Math.abs(nameDiff) > 0.05) return nameDiff;
+      return Number(b.match.match_score || 0) - Number(a.match.match_score || 0);
+    });
+}
+
+function CampogramObjectiveBlock({
+  objectiveMatches,
+  objectivePlayers,
+  player,
+}: {
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
+  player: CampogramPlayer;
+}) {
+  const [mode, setMode] = useState<ObjectiveRadarMode>("specific");
+  const objectivePlayersById = useMemo(
+    () => new Map(objectivePlayers.map((objectivePlayer) => [objectivePlayer.id, objectivePlayer])),
+    [objectivePlayers],
+  );
+
+  const bestCandidate = useMemo(() => {
+    const candidates = buildCampogramObjectiveCandidates(player, objectiveMatches, objectivePlayersById);
+    return candidates[0] || null;
+  }, [objectiveMatches, objectivePlayersById, player]);
+
+  // Si no hay match por informes subjetivos, intentamos matching directo por nombre + categoría
+  const directObjectivePlayer = useMemo(() => {
+    if (bestCandidate) return null;
+    return findDirectObjectivePlayer(player, objectivePlayers);
+  }, [bestCandidate, objectivePlayers, player]);
+
+  const selectedObjectivePlayer = bestCandidate?.objectivePlayer ?? directObjectivePlayer;
+  const radarSpecific = getObjectiveRadarForMode(selectedObjectivePlayer, "specific");
+  const radarGeneral = getObjectiveRadarForMode(selectedObjectivePlayer, "general");
+  const activeRadar = (mode === "specific" ? radarSpecific : radarGeneral) || radarSpecific || radarGeneral;
+
+  const radarItems = useMemo(() => (activeRadar ? getObjectiveRadarItems(activeRadar) : []), [activeRadar]);
+  const radarStrengths = useMemo(
+    () => [...radarItems].sort((a, b) => b.value - a.value).slice(0, 3),
+    [radarItems],
+  );
+  const radarAlerts = useMemo(
+    () => [...radarItems].sort((a, b) => a.value - b.value).slice(0, 3),
+    [radarItems],
+  );
+  const blockBalance = useMemo(() => getObjectiveRadarBlockBalance(radarItems), [radarItems]);
+  const unionValue = useMemo(() => getUnionValue(blockBalance), [blockBalance]);
+
+  const similarPlayers = useMemo(() => {
+    if (!selectedObjectivePlayer || !activeRadar) return [];
+
+    const selectedKey = objectivePlayerIdentityKey(selectedObjectivePlayer);
+    const seenKeys = new Set<string>(selectedKey ? [selectedKey] : []);
+    const comparisonLabelKey = normalizeKey(activeRadar.comparison_label || "");
+    const competitionKey = normalizeKey(activeRadar.competition_name || "");
+
+    return objectivePlayers
+      .map((candidate) => {
+        const candidateKey = objectivePlayerIdentityKey(candidate);
+        if (!candidateKey || seenKeys.has(candidateKey)) return null;
+
+        const candidateRadar = getObjectiveRadarForMode(candidate, mode);
+        if (!candidateRadar) return null;
+        const sameCompetition = normalizeKey(candidateRadar.competition_name || "") === competitionKey;
+        const sameComparison = normalizeKey(candidateRadar.comparison_label || "") === comparisonLabelKey;
+        if (!sameCompetition || !sameComparison) return null;
+
+        const similarity = calculateRadarSimilarity(activeRadar, candidateRadar);
+        if (similarity === null) return null;
+        seenKeys.add(candidateKey);
+
+        return {
+          objectivePlayer: candidate,
+          similarity,
+          blockBalance: getObjectiveRadarBlockBalance(getObjectiveRadarItems(candidateRadar)),
+        };
+      })
+      .filter(
+        (
+          candidate,
+        ): candidate is {
+          objectivePlayer: ObjectivePlayer;
+          similarity: number;
+          blockBalance: ReturnType<typeof getObjectiveRadarBlockBalance>;
+        } => candidate !== null,
+      )
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 3);
+  }, [activeRadar, mode, objectivePlayers, selectedObjectivePlayer]);
+
+  if (!selectedObjectivePlayer || !activeRadar) return null;
+
+  return (
+    <section className="campogram-objective">
+      <div className="campogram-objective__head">
+        <div>
+          <span className="profile-kicker">Datos objetivos Wyscout</span>
+          <h3>Parte objetiva del jugador</h3>
+        </div>
+        <div className="campogram-objective__status">
+          {bestCandidate ? (
+            <span className={objectiveStatusClass(bestCandidate.match.match_status)}>
+              {objectiveStatusLabel(bestCandidate.match.match_status)}
+            </span>
+          ) : (
+            <span className="objective-status objective-status--directo">Match directo</span>
+          )}
+        </div>
+      </div>
+      <p className="campogram-objective__meta">
+        {mode === "specific" ? "Según posición específica" : "Según posición general"} ·{" "}
+        {activeRadar.competition_name || "Competición"} · muestra {activeRadar.sample_count || "-"} · actualizado{" "}
+        {formatObjectiveUpdatedAt(selectedObjectivePlayer.updated_at) || "-"}
+      </p>
+      {/* Radar + insights en dos columnas para aprovechar el espacio lateral */}
+      <div className="campogram-objective__radar-panel">
+        <ObjectiveRadar
+          compact
+          mode={mode}
+          onModeChange={setMode}
+          radar={activeRadar}
+          radarGeneral={radarGeneral}
+          radarSpecific={radarSpecific}
+        />
+        <div className="campogram-objective__insights-panel">
+          {/* Encabezado de comparación: categoría + perfil de comparación */}
+          <p className="campogram-objective__comparison-head">
+            vs {activeRadar.comparison_label || (mode === "specific" ? "posición específica" : "familia posicional")}
+            {activeRadar.competition_name ? ` · ${activeRadar.competition_name}` : ""}
+            {activeRadar.sample_count ? ` · muestra ${activeRadar.sample_count}` : ""}
+            {" · percentiles 0-100"}
+          </p>
+          <div className="campogram-objective__summary-grid">
+            <div className="campogram-objective__summary-card">
+              <h4>Fortalezas</h4>
+              {radarStrengths.map((item) => (
+                <div className="objective-radar-insight-row" key={`camp-strength-${item.key}`}>
+                  <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                  <p>{compactMetricLabel(item.label)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="campogram-objective__summary-card">
+              <h4>A revisar</h4>
+              {radarAlerts.map((item) => (
+                <div className="objective-radar-insight-row" key={`camp-alert-${item.key}`}>
+                  <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                  <p>{compactMetricLabel(item.label)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="campogram-objective__summary-card">
+            <h4>Balance por bloques</h4>
+            {blockBalance.map((group) => (
+              <div className="objective-radar-balance-row" key={`camp-balance-${group.key}`}>
+                <div>
+                  <span>
+                    <i className={group.className} />
+                    {group.title}
+                  </span>
+                  <strong>{group.average}</strong>
+                </div>
+                <div className="objective-radar-balance-track">
+                  <span
+                    className={radarPercentileClass(group.average)}
+                    style={{ width: `${Math.max(4, group.average)}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="objective-radar-union-value">
+            <span>Union Value</span>
+            <strong>{unionValue}</strong>
+            <p>Promedio de Ataque, Posesión y Defensa</p>
+          </div>
+        </div>
+      </div>
+      <div className="campogram-objective__similar">
+        <div className="campogram-objective__similar-head">
+          <h4>3 jugadores similares</h4>
+          <span>{activeRadar.competition_name || "Competición"}</span>
+        </div>
+        <div className="campogram-objective__similar-grid">
+          {similarPlayers.map((candidate) => {
+            const candidateUnionValue = getUnionValue(candidate.blockBalance);
+            return (
+              <article className="objective-similar-card campogram-objective__similar-card" key={candidate.objectivePlayer.id}>
+                <div className="objective-similar-card__head">
+                  <div className="objective-similar-card__identity">
+                    <img
+                      alt={candidate.objectivePlayer.full_name || candidate.objectivePlayer.name || "Jugador similar"}
+                      src={candidate.objectivePlayer.image || candidate.objectivePlayer.current_team_logo || ""}
+                    />
+                    <div>
+                      <strong>{candidate.objectivePlayer.full_name || candidate.objectivePlayer.name || "Jugador similar"}</strong>
+                      <span>{candidate.objectivePlayer.current_team_name || "-"}</span>
+                    </div>
+                  </div>
+                  <span className="objective-similar-card__badge">{candidate.similarity}%</span>
+                </div>
+                <div className="objective-similar-card__meta">
+                  <span>{formatObjectiveAge(candidate.objectivePlayer)}</span>
+                  <span>{candidate.objectivePlayer.primary_position_label || "-"}</span>
+                  {formatComparableVolume(candidate.objectivePlayer) ? (
+                    <span>{formatComparableVolume(candidate.objectivePlayer)}</span>
+                  ) : null}
+                </div>
+                <div className="objective-similar-card__balance">
+                  {candidate.blockBalance.map((group) => (
+                    <div className="objective-radar-balance-row" key={`sim-bal-${group.key}`}>
+                      <div>
+                        <span>
+                          <i className={group.className} />
+                          {group.title}
+                        </span>
+                        <strong>{group.average}</strong>
+                      </div>
+                      <div className="objective-radar-balance-track">
+                        <span
+                          className={radarPercentileClass(group.average)}
+                          style={{ width: `${Math.max(4, group.average)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <div className="objective-similar-card__union-value-row">
+                    <span>Union Value</span>
+                    <strong>{candidateUnionValue}</strong>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function Metric({ label, value }: { label: string; value: number | string }) {
@@ -441,10 +1001,14 @@ function PlayerDetailContent({
   player,
   reports,
   status,
+  objectiveMatches,
+  objectivePlayers,
 }: {
   player: CampogramPlayer;
   reports: CampogramReport[];
   status: string;
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
 }) {
   const scouts = Array.from(new Set(reports.map((report) => reportScoutName(report)).filter((value) => value !== "-"))).join(", ");
   const latestReport = reports[0]?.report_date || null;
@@ -471,6 +1035,12 @@ function PlayerDetailContent({
         <span><strong>Scouts</strong>{displayText(scouts)}</span>
         <span><strong>Último informe</strong>{latestReport ? formatDate(latestReport) : "-"}</span>
       </div>
+
+      <CampogramObjectiveBlock
+        objectiveMatches={objectiveMatches}
+        objectivePlayers={objectivePlayers}
+        player={player}
+      />
 
       <div className="campogram-report-list">
         {reports.length ? (
@@ -505,15 +1075,25 @@ function PlayerDetail({
   player,
   reports,
   status,
+  objectiveMatches,
+  objectivePlayers,
 }: {
   player: CampogramPlayer;
   reports: CampogramReport[];
   status: string;
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
 }) {
   return (
     <details className="campogram-detail">
       <summary>Detalle | {player.player_name}</summary>
-      <PlayerDetailContent player={player} reports={reports} status={status} />
+      <PlayerDetailContent
+        objectiveMatches={objectiveMatches}
+        objectivePlayers={objectivePlayers}
+        player={player}
+        reports={reports}
+        status={status}
+      />
     </details>
   );
 }
@@ -521,9 +1101,13 @@ function PlayerDetail({
 function PlayerCard({
   player,
   reports,
+  objectiveMatches,
+  objectivePlayers,
 }: {
   player: CampogramPlayer;
   reports: CampogramReport[];
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
 }) {
   const status = consensusFromReports(reports);
   return (
@@ -541,7 +1125,13 @@ function PlayerCard({
       <small>
         Año nac. {player.birth_year || "-"} · {normalizePosition(player.position)} · Informes {reports.length}
       </small>
-      <PlayerDetail player={player} reports={reports} status={status} />
+      <PlayerDetail
+        objectiveMatches={objectiveMatches}
+        objectivePlayers={objectivePlayers}
+        player={player}
+        reports={reports}
+        status={status}
+      />
     </article>
   );
 }
@@ -576,10 +1166,14 @@ function PositionPanel({
   players,
   position,
   reportMap,
+  objectiveMatches,
+  objectivePlayers,
 }: {
   players: CampogramPlayer[];
   position: string;
   reportMap: Map<string, CampogramReport[]>;
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
 }) {
   const positionPlayers = players
     .filter((player) => normalizePosition(player.position) === position)
@@ -590,7 +1184,13 @@ function PositionPanel({
       <h3>{position}</h3>
       {positionPlayers.length ? (
         positionPlayers.map((player) => (
-          <PlayerCard key={player.id} player={player} reports={reportMap.get(player.id) || []} />
+          <PlayerCard
+            key={player.id}
+            objectiveMatches={objectiveMatches}
+            objectivePlayers={objectivePlayers}
+            player={player}
+            reports={reportMap.get(player.id) || []}
+          />
         ))
       ) : (
         <p>Sin jugadores</p>
@@ -647,10 +1247,14 @@ function CampogramPitch({
   players,
   reportMap,
   onSelectPlayer,
+  objectiveMatches,
+  objectivePlayers,
 }: {
   players: CampogramPlayer[];
   reportMap: Map<string, CampogramReport[]>;
   onSelectPlayer: (player: CampogramPlayer) => void;
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
 }) {
   const standardPositions = new Set(POSITION_ORDER);
   const extraPositions = Array.from(new Set(players.map((player) => normalizePosition(player.position))))
@@ -713,7 +1317,14 @@ function CampogramPitch({
             <div className="campogram-field-row" key={rowIndex}>
               {row.map((position, columnIndex) =>
                 position ? (
-                  <PositionPanel key={position} players={players} position={position} reportMap={reportMap} />
+                  <PositionPanel
+                    key={position}
+                    objectiveMatches={objectiveMatches}
+                    objectivePlayers={objectivePlayers}
+                    players={players}
+                    position={position}
+                    reportMap={reportMap}
+                  />
                 ) : (
                   <div className="campogram-field-spacer" key={`spacer-${rowIndex}-${columnIndex}`} />
                 ),
@@ -730,7 +1341,14 @@ function CampogramPitch({
           </div>
           <div className="campogram-extra-grid">
             {extraPositions.map((position) => (
-              <PositionPanel key={position} players={players} position={position} reportMap={reportMap} />
+              <PositionPanel
+                key={position}
+                objectiveMatches={objectiveMatches}
+                objectivePlayers={objectivePlayers}
+                players={players}
+                position={position}
+                reportMap={reportMap}
+              />
             ))}
           </div>
         </>
@@ -743,6 +1361,8 @@ export function CampogramsView({
   campograms,
   campogramPlayers,
   campogramReports,
+  objectiveMatches,
+  objectivePlayers,
   focusPlayerId,
   focusPlayerName,
   profile,
@@ -750,12 +1370,14 @@ export function CampogramsView({
   campograms: Campogram[];
   campogramPlayers: CampogramPlayer[];
   campogramReports: CampogramReport[];
+  objectiveMatches: ObjectivePlayerMatch[];
+  objectivePlayers: ObjectivePlayer[];
   focusPlayerId?: string;
   focusPlayerName?: string;
   profile?: UserProfile;
 }) {
-  const [selectedCampogramId, setSelectedCampogramId] = useState("");
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [selectedCampogramId, setSelectedCampogramId] = useSessionState<string>("camp:selectedCampogramId", "");
+  const [selectedPlayerId, setSelectedPlayerId] = useSessionState<string | null>("camp:selectedPlayerId", null);
 
   const visibleCampogramPlayers = useMemo(
     () => dedupeCampogramPlayers(campogramPlayers),
@@ -878,6 +1500,8 @@ export function CampogramsView({
         onSelectPlayer={(player) => setSelectedPlayerId(player.id)}
         players={selectedPlayers}
         reportMap={reportMap}
+        objectiveMatches={objectiveMatches}
+        objectivePlayers={objectivePlayers}
       />
       {selectedPlayer ? (
         <div className="campogram-player-modal" role="dialog" aria-modal="true" aria-label={`Detalle ${selectedPlayer.player_name}`}>
@@ -897,6 +1521,8 @@ export function CampogramsView({
               <button onClick={() => setSelectedPlayerId(null)} type="button">Cerrar</button>
             </header>
             <PlayerDetailContent
+              objectiveMatches={objectiveMatches}
+              objectivePlayers={objectivePlayers}
               player={selectedPlayer}
               reports={reportMap.get(selectedPlayer.id) || []}
               status={playerStatus(selectedPlayer, reportMap)}

@@ -1940,6 +1940,10 @@ p {
   .campogram-pitch-line--midfield .campogram-pitch-position {
     max-width: 312px;
   }
+
+  .objective-similar-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .campogram-classic-list {
@@ -2155,6 +2159,284 @@ p {
   color: #66665f;
   font-size: 0.68rem;
   text-transform: uppercase;
+}
+
+.campogram-objective {
+  background:
+    radial-gradient(circle at top left, rgba(231, 210, 26, 0.12), transparent 20rem),
+    #171717;
+  border: 1px solid rgba(231, 210, 26, 0.16);
+  border-radius: 22px;
+  display: grid;
+  gap: 0.9rem;
+  margin: 0 0.5rem;
+  overflow: hidden;
+  padding: 0.95rem;
+}
+
+.campogram-objective__head {
+  align-items: center;
+  display: flex;
+  gap: 0.8rem;
+  justify-content: space-between;
+}
+
+.campogram-objective__head h3 {
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 950;
+  margin: 0.2rem 0 0;
+}
+
+.campogram-objective__status {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.campogram-objective__meta {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.82rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.campogram-objective .objective-radar-card {
+  border-radius: 20px;
+  margin: 0;
+  min-height: unset;
+  padding: 1rem;
+}
+
+.campogram-objective .objective-radar-topbar {
+  align-items: flex-start;
+}
+
+.campogram-objective .objective-radar-kicker {
+  font-size: 0.72rem;
+}
+
+.campogram-objective .objective-radar-card h2 {
+  font-size: 1.5rem;
+}
+
+.campogram-objective .objective-radar-rings {
+  min-height: unset;
+}
+
+.campogram-objective .objective-radar-insights {
+  gap: 0.8rem;
+}
+
+.campogram-objective .objective-radar-union-value {
+  margin: 0;
+}
+
+/* Ocultar el <p> de comparación del head del radar en campograma:
+   se muestra en el panel de insights como encabezado propio */
+.campogram-objective .objective-radar-card__head p {
+  display: none;
+}
+
+/* Reducir tamaño de los botones del toggle en compact para que quepan en 300px */
+.campogram-objective .objective-radar-controls button {
+  font-size: 0.65rem;
+  padding: 0.38rem 0.55rem;
+}
+
+/* Encabezado de comparación en la parte superior del panel de insights */
+.campogram-objective__comparison-head {
+  color: #e4dfad;
+  font-size: 0.8rem;
+  font-weight: 850;
+  line-height: 1.4;
+  margin: 0;
+  padding: 0.5rem 0 0.15rem;
+}
+
+/* Radar a la izquierda (300px) + panel de insights a la derecha */
+.campogram-objective__radar-panel {
+  align-items: start;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 300px 1fr;
+}
+
+/* Panel derecho: Union Value + Fortalezas/A revisar + Balance */
+.campogram-objective__insights-panel {
+  display: grid;
+  gap: 0.65rem;
+}
+
+/* Fortalezas + A revisar en paralelo */
+.campogram-objective__summary-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.campogram-objective__summary-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem;
+}
+
+.campogram-objective__summary-card h4,
+.campogram-objective__similar h4 {
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 950;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.campogram-objective__summary-card .objective-radar-insight-row,
+.campogram-objective__summary-card .objective-radar-balance-row {
+  margin: 0;
+}
+
+.campogram-objective__similar {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.campogram-objective__similar-head {
+  align-items: baseline;
+  display: flex;
+  gap: 0.65rem;
+  justify-content: space-between;
+}
+
+.campogram-objective__similar-head span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.campogram-objective__similar-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.campogram-objective__similar-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  min-height: unset;
+  padding: 0.8rem;
+}
+
+.campogram-objective__similar-card .objective-similar-card__head {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.55rem;
+  justify-content: space-between;
+}
+
+.campogram-objective__similar-card .objective-similar-card__identity {
+  align-items: center;
+  display: flex;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.campogram-objective__similar-card .objective-similar-card__identity > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.campogram-objective__similar-card .objective-similar-card__identity img {
+  border-radius: 999px;
+  flex-shrink: 0;
+  height: 52px;
+  object-fit: cover;
+  width: 52px;
+}
+
+.campogram-objective__similar-card .objective-similar-card__identity strong {
+  color: #ffffff;
+  font-size: 0.96rem;
+}
+
+.campogram-objective__similar-card .objective-similar-card__identity span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+}
+
+.campogram-objective__similar-card .objective-similar-card__badge {
+  background: rgba(224, 210, 0, 0.18);
+  border: 1px solid rgba(224, 210, 0, 0.35);
+  border-radius: 999px;
+  color: #f5ec7d;
+  font-size: 0.86rem;
+  font-weight: 950;
+  line-height: 1;
+  padding: 0.3rem 0.58rem;
+  white-space: nowrap;
+}
+
+.campogram-objective__similar-card .objective-similar-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+  margin-top: 0.55rem;
+}
+
+.campogram-objective__similar-card .objective-similar-card__meta span {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0.18rem 0.5rem;
+}
+
+.objective-similar-card__balance {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.65rem;
+}
+
+.campogram-objective__similar-card .objective-radar-balance-row {
+  margin: 0;
+}
+
+.campogram-objective__similar-card .objective-radar-balance-row > div:first-child span {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.72rem;
+}
+
+.campogram-objective__similar-card .objective-radar-balance-row strong {
+  color: #ffffff;
+  font-size: 0.78rem;
+}
+
+.objective-similar-card__union-value-row {
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+}
+
+.objective-similar-card__union-value-row span {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.objective-similar-card__union-value-row strong {
+  color: #f5ec7d;
+  font-size: 1rem;
+  font-weight: 950;
 }
 
 .campogram-report-list {
@@ -2460,6 +2742,12 @@ p {
   color: #a43b0b;
 }
 
+.objective-status--directo {
+  background: #e8f0fe;
+  border-color: rgba(66, 133, 244, 0.24);
+  color: #1a56c4;
+}
+
 .objective-facts-grid,
 .objective-metrics-grid {
   display: grid;
@@ -2593,6 +2881,16 @@ p {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: minmax(420px, 500px) 1fr;
+}
+
+/* Modo compacto: solo el gráfico SVG, sin panel de métricas a la derecha */
+.objective-radar-layout--compact {
+  display: block;
+}
+
+.objective-radar-layout--compact .objective-radar {
+  max-width: 300px;
+  width: 100%;
 }
 
 .objective-radar {
@@ -2920,6 +3218,358 @@ p {
 
 .percentile-elite {
   background: #228b41;
+}
+
+.objective-similar-section {
+  background:
+    radial-gradient(circle at 16% 22%, rgba(224, 210, 0, 0.1), transparent 28%),
+    linear-gradient(135deg, rgba(17, 17, 17, 0.97), rgba(30, 31, 27, 0.96)),
+    #111111;
+  border: 1px solid rgba(224, 210, 0, 0.2);
+  border-radius: 24px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 14px 30px rgba(10, 10, 10, 0.12);
+  margin-top: 1rem;
+  padding: 0.95rem 1rem 1rem;
+}
+
+.objective-similar-section__head {
+  align-items: end;
+  display: flex;
+  gap: 0.85rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.objective-similar-section__head h3 {
+  color: #ffffff;
+  font-size: 1.12rem;
+  margin: 0.18rem 0 0;
+}
+
+.objective-similar-section__head p {
+  color: #e4dfad;
+  font-size: 0.75rem;
+  font-weight: 850;
+  margin: 0;
+  text-align: right;
+}
+
+.objective-similar-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.objective-similar-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.065));
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 20px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 0.8rem;
+}
+
+.objective-similar-card__top {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: auto 1fr;
+}
+
+.objective-similar-photo-wrap {
+  height: 74px;
+  position: relative;
+  width: 74px;
+}
+
+.objective-similar-photo {
+  background: #f0f0ea;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 10px 22px rgba(10, 10, 10, 0.16);
+  height: 74px;
+  object-fit: cover;
+  width: 74px;
+}
+
+.objective-similar-photo--empty {
+  align-items: center;
+  color: #66665f;
+  display: flex;
+  font-size: 0.62rem;
+  font-weight: 950;
+  justify-content: center;
+  text-align: center;
+}
+
+.objective-similar-team-logo {
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  bottom: -2px;
+  box-shadow: 0 6px 14px rgba(10, 10, 10, 0.16);
+  height: 28px;
+  object-fit: contain;
+  padding: 0.12rem;
+  position: absolute;
+  right: -2px;
+  width: 28px;
+}
+
+.objective-similar-card__content {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.objective-similar-card__title-row {
+  align-items: start;
+  display: flex;
+  gap: 0.65rem;
+  justify-content: space-between;
+}
+
+.objective-similar-card h4 {
+  color: #ffffff;
+  font-size: 0.96rem;
+  line-height: 1.05;
+  margin: 0;
+}
+
+.objective-similar-card h4 + p {
+  color: #d8d8cf;
+  font-size: 0.72rem;
+  font-weight: 850;
+  margin: 0.28rem 0 0;
+}
+
+.objective-similar-score-stack {
+  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.objective-similar-score {
+  background: rgba(224, 210, 0, 0.16);
+  border: 1px solid rgba(224, 210, 0, 0.3);
+  border-radius: 999px;
+  color: #f5ec7d;
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 950;
+  line-height: 1;
+  padding: 0.34rem 0.6rem;
+  white-space: nowrap;
+}
+
+.objective-similar-union-value {
+  color: #f6f1be;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.objective-similar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.objective-similar-meta span {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: #efefe7;
+  font-size: 0.66rem;
+  font-weight: 900;
+  padding: 0.28rem 0.5rem;
+}
+
+.objective-similar-bars {
+  display: grid;
+  gap: 0.46rem;
+  margin-top: 0.7rem;
+}
+
+.objective-similar-bar > div:first-child {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.22rem;
+}
+
+.objective-similar-bar span {
+  align-items: center;
+  color: #ecece4;
+  display: inline-flex;
+  font-size: 0.68rem;
+  font-weight: 900;
+  gap: 0.34rem;
+}
+
+.objective-similar-bar i {
+  border-radius: 999px;
+  display: inline-block;
+  height: 0.48rem;
+  width: 0.48rem;
+}
+
+.objective-similar-bar strong {
+  color: #ffffff;
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
+.objective-similar-track {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  height: 0.72rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.objective-similar-track span,
+.objective-similar-track__fill {
+  display: block;
+  height: 100%;
+}
+
+.objective-similar-track__fill {
+  background: linear-gradient(90deg, #c7b500 0%, #e0d200 100%);
+  box-shadow: 0 0 20px rgba(224, 210, 0, 0.35);
+  border-radius: 999px;
+}
+
+.objective-comparable-radar {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.7rem 0.75rem;
+}
+
+.objective-comparable-radar__legend {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  justify-content: center;
+  margin-bottom: 0.45rem;
+}
+
+.objective-comparable-radar__legend span {
+  align-items: center;
+  color: #efefe7;
+  display: inline-flex;
+  font-size: 0.62rem;
+  font-weight: 900;
+  gap: 0.3rem;
+}
+
+.objective-comparable-radar__swatch {
+  border-radius: 999px;
+  display: inline-block;
+  height: 0.5rem;
+  width: 0.5rem;
+}
+
+.objective-comparable-radar__swatch--selected {
+  background: #e0d200;
+}
+
+.objective-comparable-radar__swatch--candidate {
+  background: #8bd0ff;
+}
+
+.objective-comparable-radar__svg {
+  display: block;
+  height: 252px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.objective-comparable-radar__grid {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.11);
+  stroke-width: 1;
+}
+
+.objective-comparable-radar__axis {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+}
+
+.objective-comparable-radar__label {
+  fill: #efefe7;
+  font-size: 6.8px;
+  font-weight: 900;
+}
+
+.objective-comparable-radar__area {
+  stroke-width: 0;
+}
+
+.objective-comparable-radar__area--selected {
+  fill: rgba(224, 210, 0, 0.22);
+}
+
+.objective-comparable-radar__area--candidate {
+  fill: rgba(139, 208, 255, 0.18);
+}
+
+.objective-comparable-radar__stroke {
+  fill: none;
+  stroke-width: 2.4;
+}
+
+.objective-comparable-radar__stroke--selected {
+  stroke: #e0d200;
+}
+
+.objective-comparable-radar__stroke--candidate {
+  stroke: #8bd0ff;
+}
+
+.objective-similar-empty {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  color: #d8d8cf;
+  font-size: 0.86rem;
+  font-weight: 850;
+  padding: 0.9rem 1rem;
+}
+
+.objective-radar-union-value {
+  background: linear-gradient(180deg, rgba(224, 210, 0, 0.13), rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(224, 210, 0, 0.22);
+  border-radius: 18px;
+  margin-bottom: 0.8rem;
+  padding: 0.8rem 0.9rem 0.72rem;
+}
+
+.objective-radar-union-value span {
+  color: #f0e788;
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.objective-radar-union-value strong {
+  color: #ffffff;
+  display: block;
+  font-size: 2rem;
+  font-weight: 1000;
+  line-height: 1;
+  margin-top: 0.22rem;
+}
+
+.objective-radar-union-value p {
+  color: #d7d4bd;
+  font-size: 0.7rem;
+  font-weight: 800;
+  margin: 0.32rem 0 0;
 }
 
 .objective-radar-legend {
@@ -3856,6 +4506,38 @@ p {
     grid-template-columns: 1fr;
   }
 
+  .objective-similar-section__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .objective-similar-section__head p {
+    text-align: left;
+  }
+
+  .objective-similar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .campogram-objective__head,
+  .campogram-objective__similar-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .campogram-objective__radar-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .campogram-objective__summary-grid,
+  .campogram-objective__similar-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .campogram-objective {
+    margin: 0;
+  }
+
   .report-row__head {
     flex-direction: column;
   }
@@ -3866,5 +4548,19 @@ p {
 
   .match-meta {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .campogram-objective {
+    padding: 0.8rem;
+  }
+
+  .campogram-objective .objective-radar-card {
+    padding: 0.8rem;
+  }
+
+  .campogram-objective .objective-radar-rings {
+    min-height: 260px;
   }
 }

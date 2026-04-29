@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { LoginView } from "./components/LoginView";
 import { supabase } from "./lib/supabase";
@@ -300,7 +300,7 @@ async function fetchAllObjectivePlayers(seasonId: string) {
       const { data, error } = await supabase
         .from("objective_players")
         .select(
-          "id,objective_dataset,source_player_id,name,full_name,birth_year,birth_date,birth_country_name,passport_country_names,image,current_team_name,domestic_competition_name,current_team_logo,current_team_color,last_club_name,contract_expires,market_value,on_loan,positions,primary_position,primary_position_label,secondary_position,secondary_position_label,third_position,third_position_label,foot,height,weight,metrics",
+          "id,objective_dataset,source_player_id,name,full_name,birth_year,birth_date,birth_country_name,passport_country_names,image,current_team_name,domestic_competition_name,current_team_logo,current_team_color,last_club_name,contract_expires,market_value,on_loan,positions,primary_position,primary_position_label,secondary_position,secondary_position_label,third_position,third_position_label,foot,height,weight,updated_at,metrics",
         )
         .eq("season_id", seasonId)
         .range(from, from + pageSize - 1);
@@ -419,6 +419,7 @@ function AppShell({
   campograms,
   campogramPlayers,
   campogramReports,
+  objectivePlayers,
   objectiveMatches,
 }: {
   session: Session;
@@ -435,6 +436,7 @@ function AppShell({
   campograms: Campogram[];
   campogramPlayers: CampogramPlayer[];
   campogramReports: CampogramReport[];
+  objectivePlayers: ObjectivePlayer[];
   objectiveMatches: ObjectivePlayerMatch[];
 }) {
   const [focusedPlayerName, setFocusedPlayerName] = useState("");
@@ -517,6 +519,7 @@ function AppShell({
       {activeView === "Jugadores" ? (
         <PlayersView
           focusPlayerName={focusedPlayerName}
+          objectivePlayers={objectivePlayers}
           objectiveMatches={scopedObjectiveMatches}
           players={scopedPlayers}
           reports={scopedReports}
@@ -550,6 +553,8 @@ function AppShell({
           campograms={campograms}
           focusPlayerId={focusedCampogramPlayerId}
           focusPlayerName={focusedCampogramPlayerName}
+          objectiveMatches={objectiveMatches}
+          objectivePlayers={objectivePlayers}
           profile={profile}
         />
       ) : null}
@@ -560,6 +565,8 @@ function AppShell({
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  // Evita mostrar la pantalla de carga en refrescos silenciosos de token
+  const hasBootstrappedRef = useRef(false);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [counts, setCounts] = useState<DashboardCounts>({
@@ -574,8 +581,25 @@ export default function App() {
   const [campograms, setCampograms] = useState<Campogram[]>([]);
   const [campogramPlayers, setCampogramPlayers] = useState<CampogramPlayer[]>([]);
   const [campogramReports, setCampogramReports] = useState<CampogramReport[]>([]);
+  const [objectivePlayers, setObjectivePlayers] = useState<ObjectivePlayer[]>([]);
   const [objectiveMatches, setObjectiveMatches] = useState<ObjectivePlayerMatch[]>([]);
-  const [activeView, setActiveView] = useState<ViewName>("Dashboard");
+  const [activeView, setActiveView] = useState<ViewName>(() => {
+    try {
+      const stored = sessionStorage.getItem("app:activeView");
+      return (stored as ViewName) || "Dashboard";
+    } catch {
+      return "Dashboard";
+    }
+  });
+
+  // Sincronizar activeView con sessionStorage al cambiar
+  const handleSetActiveView = useCallback(
+    (view: ViewName) => {
+      try { sessionStorage.setItem("app:activeView", view); } catch { /* sin-op */ }
+      setActiveView(view);
+    },
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -603,14 +627,17 @@ export default function App() {
     }
 
     loadSession();
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (nextSession) {
         markSessionActivity();
+        // TOKEN_REFRESHED: solo actualizar el token, no resetear el perfil ni los datos
+        setSession(nextSession);
       } else {
+        // SIGNED_OUT: limpiar todo
         clearSessionActivity();
+        setProfile(null);
+        setSession(null);
       }
-      setSession(nextSession);
-      setProfile(null);
     });
 
     return () => {
@@ -646,7 +673,9 @@ export default function App() {
     const currentSession = session;
 
     async function loadBootstrapData() {
-      setIsLoading(true);
+      // Si ya cargamos una vez (refresco de token silencioso), no mostrar pantalla de carga
+      const isFirstLoad = !hasBootstrappedRef.current;
+      if (isFirstLoad) setIsLoading(true);
       setError(null);
 
       const [{ data: profileData, error: profileError }, { data: seasonData, error: seasonError }] =
@@ -659,19 +688,21 @@ export default function App() {
 
       if (profileError) {
         setError(`No se pudo cargar el perfil: ${profileError.message}`);
-        setIsLoading(false);
+        if (isFirstLoad) setIsLoading(false);
         return;
       }
       if (seasonError) {
         setError(`No se pudieron cargar temporadas: ${seasonError.message}`);
-        setIsLoading(false);
+        if (isFirstLoad) setIsLoading(false);
         return;
       }
 
+      hasBootstrappedRef.current = true;
       setProfile(profileData as UserProfile);
       setSeasons((seasonData || []) as Season[]);
-      setSelectedSeasonId((seasonData || [])[0]?.id || "");
-      setIsLoading(false);
+      // Solo sobreescribir la temporada seleccionada en la primera carga
+      if (isFirstLoad) setSelectedSeasonId((seasonData || [])[0]?.id || "");
+      if (isFirstLoad) setIsLoading(false);
     }
 
     loadBootstrapData();
@@ -776,6 +807,7 @@ export default function App() {
           objective_player: objectivePlayersById.get(match.objective_player_id),
         }))
         .filter((match) => match.objective_player);
+      setObjectivePlayers((objectiveRows.error ? [] : objectiveRows.data || []) as ObjectivePlayer[]);
       setPlayers(buildPlayerSummaries(fullReports));
       setReports(fullReports);
       setObjectiveMatches(enrichedObjectiveMatches);
@@ -831,6 +863,7 @@ export default function App() {
       campogramReports={campogramReports}
       campograms={campograms}
       matches={matches}
+      objectivePlayers={objectivePlayers}
       objectiveMatches={objectiveMatches}
       players={players}
       profile={profile}
@@ -838,7 +871,7 @@ export default function App() {
       seasons={seasons}
       selectedSeasonId={selectedSeasonId}
       session={session}
-      setActiveView={setActiveView}
+      setActiveView={handleSetActiveView}
       setSelectedSeasonId={setSelectedSeasonId}
     />
   );
