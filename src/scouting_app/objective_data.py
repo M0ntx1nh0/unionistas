@@ -51,6 +51,9 @@ OBJECTIVE_ACTIVE_COLUMNS = [
     "primary_position",
     "secondary_position",
     "third_position",
+    "primary_position_percent",
+    "secondary_position_percent",
+    "third_position_percent",
     "foot",
     "height",
     "weight",
@@ -175,6 +178,9 @@ NUMERIC_COLUMNS = [
     "market_value",
     "height",
     "weight",
+    "primary_position_percent",
+    "secondary_position_percent",
+    "third_position_percent",
     "minutes_on_field",
     "total_matches",
     "goals",
@@ -237,6 +243,7 @@ NUMERIC_COLUMNS = [
 ]
 
 POSITION_CODE_COLUMNS = ["primary_position", "secondary_position", "third_position"]
+POSITION_PERCENT_COLUMNS = ["primary_position_percent", "secondary_position_percent", "third_position_percent"]
 
 POSITION_LABELS = {
     "GK": "Portero",
@@ -248,6 +255,8 @@ POSITION_LABELS = {
     "RWB": "Carrilero Derecho",
     "LWB": "Carrilero Izquierdo",
     "DMF": "Pivote",
+    "RDMF": "Mediocentro",
+    "LDMF": "Mediocentro",
     "CMF": "Mediocentro",
     "RCMF": "Mediocentro",
     "LCMF": "Mediocentro",
@@ -751,13 +760,25 @@ def load_radar_config(config_path: str | Path | None = None) -> pd.DataFrame:
 
 
 def get_radar_group(position_label: Any) -> str | None:
+    # Intentar lookup directo con el label tal como está en BD
     normalized_label = _clean_text(position_label)
-    return RADAR_GROUP_BY_POSITION.get(normalized_label)
+    result = RADAR_GROUP_BY_POSITION.get(normalized_label)
+    if result is not None:
+        return result
+    # Fallback: traducir código Wyscout a label español y reintentar
+    # Cubre casos como "Rdmf" → "Mediocentro" cuando el sync guardó el código sin traducir
+    translated = _position_label(normalized_label)
+    return RADAR_GROUP_BY_POSITION.get(translated)
 
 
 def get_position_family(position_label: Any) -> str | None:
     normalized_label = _clean_text(position_label)
-    return POSITION_FAMILY_BY_LABEL.get(normalized_label)
+    result = POSITION_FAMILY_BY_LABEL.get(normalized_label)
+    if result is not None:
+        return result
+    # Mismo fallback para posiciones sin traducir
+    translated = _position_label(normalized_label)
+    return POSITION_FAMILY_BY_LABEL.get(translated)
 
 
 def build_objective_comparison_frame(objective_df: pd.DataFrame) -> pd.DataFrame:

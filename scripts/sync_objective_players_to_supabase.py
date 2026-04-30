@@ -208,6 +208,13 @@ def _metric_payload(
         if metric_key in row.index:
             metrics[metric_key] = _json_safe(row.get(metric_key))
 
+    # Guardar % de tiempo jugado por posición (dato de Wyscout, no calculado)
+    for pct_col in ("primary_position_percent", "secondary_position_percent", "third_position_percent"):
+        if pct_col in row.index:
+            val = pd.to_numeric(row.get(pct_col), errors="coerce")
+            if val is not None and not pd.isna(val) and val > 0:
+                metrics[pct_col] = int(val) if float(val) == float(int(val)) else float(val)
+
     panel_metrics = get_objective_metric_panel_columns(row, limit=16)
     if panel_metrics:
         metrics["_panel_metric_keys"] = panel_metrics

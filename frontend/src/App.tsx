@@ -20,6 +20,7 @@ import { CampogramsView } from "./views/CampogramsView";
 import { DashboardView } from "./views/DashboardView";
 import { PlayersView } from "./views/PlayersView";
 import { ReportsView } from "./views/ReportsView";
+import { ULabView } from "./views/ULabView";
 import { VIEWS, type ViewName } from "./views/viewConfig";
 
 type SyncTarget = "reports" | "campograms" | "calendar" | "wyscout" | "all";
@@ -557,6 +558,9 @@ function AppShell({
           objectivePlayers={objectivePlayers}
           profile={profile}
         />
+      ) : null}
+      {activeView === "ULab" ? (
+        <ULabView objectivePlayers={objectivePlayers} />
       ) : null}
     </main>
   );
