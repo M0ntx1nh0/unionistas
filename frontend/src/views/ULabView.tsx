@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import type { ObjectivePlayer } from "../types";
 import {
   calculateRadarSimilarity,
@@ -438,6 +438,230 @@ function CompareRadar({ entries, mode }: { entries: CompareEntry[]; mode: Object
 }
 
 // ─────────────────────────────────────────────────────────
+// Utilidad foto: Wyscout usa "photo-not-found.png" en vez de null
+// ─────────────────────────────────────────────────────────
+function isRealPhoto(url: string | null | undefined): boolean {
+  return !!url && !url.includes("photo-not-found");
+}
+
+// ─────────────────────────────────────────────────────────
+// Config de 20 métricas para Rankings y Scatterplot
+// ─────────────────────────────────────────────────────────
+interface MetricConfig {
+  key: string;
+  label: string;
+  short: string;
+  getValue: (m: Record<string, unknown>) => number | null;
+  decimals: number;
+  isEfficiency?: boolean;
+  unit?: string;
+  higherIsBetter: boolean;
+}
+
+function metricsMinutes(m: Record<string, unknown>): number {
+  return Number(m.minutes_on_field) || 0;
+}
+
+const METRICS_CONFIG: MetricConfig[] = [
+  {
+    key: "total_matches",
+    label: "Partidos Jugados",
+    short: "PJ",
+    getValue: (m) => { const v = Number(m.total_matches); return v > 0 ? v : null; },
+    decimals: 0,
+    higherIsBetter: true,
+  },
+  {
+    key: "minutes_on_field",
+    label: "Minutos Disputados",
+    short: "MIN",
+    getValue: (m) => { const v = Number(m.minutes_on_field); return v > 0 ? v : null; },
+    decimals: 0,
+    higherIsBetter: true,
+  },
+  {
+    key: "goals_total",
+    label: "Goles",
+    short: "G",
+    getValue: (m) => {
+      const min = metricsMinutes(m);
+      const avg = Number(m.goals_avg);
+      if (!min) return null;
+      return Math.round(avg * min / 90 * 10) / 10;
+    },
+    decimals: 1,
+    higherIsBetter: true,
+  },
+  {
+    key: "xg_total",
+    label: "xG",
+    short: "xG",
+    getValue: (m) => {
+      const min = metricsMinutes(m);
+      const avg = Number(m.xg_shot_avg);
+      if (!min) return null;
+      return Math.round(avg * min / 90 * 100) / 100;
+    },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "assists_total",
+    label: "Asistencias",
+    short: "A",
+    getValue: (m) => {
+      const min = metricsMinutes(m);
+      const avg = Number(m.assists_avg);
+      if (!min) return null;
+      return Math.round(avg * min / 90 * 10) / 10;
+    },
+    decimals: 1,
+    higherIsBetter: true,
+  },
+  {
+    key: "xa_total",
+    label: "xA",
+    short: "xA",
+    getValue: (m) => {
+      const min = metricsMinutes(m);
+      const avg = Number(m.xg_assist_avg);
+      if (!min) return null;
+      return Math.round(avg * min / 90 * 100) / 100;
+    },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "efficiency_goal",
+    label: "Eficiencia Gol",
+    short: "G − xG",
+    getValue: (m) => {
+      const min = metricsMinutes(m);
+      if (!min) return null;
+      const goals = Number(m.goals_avg) * min / 90;
+      const xg = Number(m.xg_shot_avg) * min / 90;
+      return Math.round((goals - xg) * 100) / 100;
+    },
+    decimals: 2,
+    isEfficiency: true,
+    higherIsBetter: true,
+  },
+  {
+    key: "efficiency_assists",
+    label: "Eficiencia Asistencias",
+    short: "A − xA",
+    getValue: (m) => {
+      const min = metricsMinutes(m);
+      if (!min) return null;
+      const assists = Number(m.assists_avg) * min / 90;
+      const xa = Number(m.xg_assist_avg) * min / 90;
+      return Math.round((assists - xa) * 100) / 100;
+    },
+    decimals: 2,
+    isEfficiency: true,
+    higherIsBetter: true,
+  },
+  {
+    key: "shots_avg",
+    label: "Remates/90",
+    short: "REM/90",
+    getValue: (m) => { const v = Number(m.shots_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "xg_per_shot",
+    label: "xG/Remate",
+    short: "xG/REM",
+    getValue: (m) => { const v = Number(m.xg_per_shot); return v > 0 ? v : null; },
+    decimals: 3,
+    higherIsBetter: true,
+  },
+  {
+    key: "touch_in_box_avg",
+    label: "Toques en área/90",
+    short: "TOC.ÁR/90",
+    getValue: (m) => { const v = Number(m.touch_in_box_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "passes_avg",
+    label: "Pases/90",
+    short: "PAS/90",
+    getValue: (m) => { const v = Number(m.passes_avg); return v > 0 ? v : null; },
+    decimals: 1,
+    higherIsBetter: true,
+  },
+  {
+    key: "accurate_passes_percent",
+    label: "% Pases acertados",
+    short: "%PAS",
+    getValue: (m) => { const v = Number(m.accurate_passes_percent); return v > 0 ? v : null; },
+    decimals: 1,
+    unit: "%",
+    higherIsBetter: true,
+  },
+  {
+    key: "progressive_pass_avg",
+    label: "Pases prog./90",
+    short: "PAS.PROG/90",
+    getValue: (m) => { const v = Number(m.progressive_pass_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "progressive_run_avg",
+    label: "Conducciones prog./90",
+    short: "COND.PROG/90",
+    getValue: (m) => { const v = Number(m.progressive_run_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "dribbles_avg",
+    label: "Regates/90",
+    short: "REG/90",
+    getValue: (m) => { const v = Number(m.dribbles_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "duels_avg",
+    label: "Duelos/90",
+    short: "DUE/90",
+    getValue: (m) => { const v = Number(m.duels_avg); return v > 0 ? v : null; },
+    decimals: 1,
+    higherIsBetter: true,
+  },
+  {
+    key: "duels_won",
+    label: "% Duelos ganados",
+    short: "%DUE",
+    getValue: (m) => { const v = Number(m.duels_won); return v > 0 ? v : null; },
+    decimals: 1,
+    unit: "%",
+    higherIsBetter: true,
+  },
+  {
+    key: "successful_defensive_actions_avg",
+    label: "Acc. Defensivas/90",
+    short: "ACC.DEF/90",
+    getValue: (m) => { const v = Number(m.successful_defensive_actions_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+  {
+    key: "interceptions_avg",
+    label: "Intercepciones/90",
+    short: "INT/90",
+    getValue: (m) => { const v = Number(m.interceptions_avg); return v > 0 ? v : null; },
+    decimals: 2,
+    higherIsBetter: true,
+  },
+];
+
+// ─────────────────────────────────────────────────────────
 // Tarjeta de jugador de la plantilla
 // ─────────────────────────────────────────────────────────
 function SquadPlayerCard({
@@ -468,8 +692,8 @@ function SquadPlayerCard({
       style={{ "--line-color": color } as React.CSSProperties}
     >
       <div className="ulab-squad-card__photo">
-        {player.image ? (
-          <img src={player.image} alt={playerShortName(player)} />
+        {isRealPhoto(player.image) ? (
+          <img src={player.image!} alt={playerShortName(player)} />
         ) : (
           <span className="ulab-squad-card__photo-placeholder">
             {playerShortName(player)[0]}
@@ -637,8 +861,8 @@ function PlayerDetailPanel({
     <aside className="ulab-detail-panel">
       <div className="ulab-detail-panel__header" style={{ borderColor: color }}>
         <div className="ulab-detail-panel__identity">
-          {player.image ? (
-            <img src={player.image} alt={playerShortName(player)} className="ulab-detail-panel__photo" />
+          {isRealPhoto(player.image) ? (
+            <img src={player.image!} alt={playerShortName(player)} className="ulab-detail-panel__photo" />
           ) : null}
           <div>
             <span className="profile-kicker" style={{ color }}>
@@ -851,8 +1075,8 @@ function PlayerDetailPanel({
                 return (
                   <li key={s.player.id} className="ulab-similar-item">
                     <span className="ulab-similar-item__rank">{i + 1}</span>
-                    {s.player.image ? (
-                      <img src={s.player.image} alt={s.player.name || ""} className="ulab-similar-item__photo" />
+                    {isRealPhoto(s.player.image) ? (
+                      <img src={s.player.image!} alt={s.player.name || ""} className="ulab-similar-item__photo" />
                     ) : (
                       <div className="ulab-similar-item__photo-placeholder" />
                     )}
@@ -876,6 +1100,334 @@ function PlayerDetailPanel({
         </div>
       ) : null}
     </aside>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Rankings de plantilla
+// ─────────────────────────────────────────────────────────
+function RankingsSection({ players }: { players: ObjectivePlayer[] }) {
+  return (
+    <div className="ulab-rankings">
+      <h3 className="ulab-section-title">Rankings de plantilla</h3>
+      <div className="ulab-rankings-grid">
+        {METRICS_CONFIG.map((metric) => {
+          const rows = players
+            .map((p) => {
+              const mObj = (p.metrics as Record<string, unknown>) || {};
+              const val = metric.getValue(mObj);
+              return val !== null ? { player: p, value: val } : null;
+            })
+            .filter((x): x is NonNullable<typeof x> => x !== null)
+            .sort((a, b) => metric.higherIsBetter ? b.value - a.value : a.value - b.value);
+
+          if (rows.length === 0) return null;
+
+          const best = rows[0].value;
+          const worst = rows[rows.length - 1].value;
+          const range = best - worst || 1;
+
+          return (
+            <div key={metric.key} className="ulab-ranking-card">
+              <div className="ulab-ranking-card__title">{metric.label}</div>
+              <ul className="ulab-ranking-list">
+                {rows.map((row, i) => {
+                  const barPct = metric.higherIsBetter
+                    ? ((row.value - worst) / range) * 100
+                    : ((best - row.value) / range) * 100;
+
+                  const isPos = metric.isEfficiency && row.value > 0;
+                  const isNeg = metric.isEfficiency && row.value < 0;
+                  const valColor = isPos ? "#16813a" : isNeg ? "#d9480f" : undefined;
+                  const barColor = isPos ? "#16813a" : isNeg ? "#d9480f" : "#e0d200";
+                  const sign = isPos ? "+" : "";
+                  const displayVal = `${sign}${row.value.toFixed(metric.decimals)}${metric.unit ?? ""}`;
+
+                  return (
+                    <li key={row.player.id} className="ulab-ranking-row">
+                      <span className="ulab-ranking-row__rank">{i + 1}</span>
+                      {isRealPhoto(row.player.image) ? (
+                        <img src={row.player.image!} alt="" className="ulab-ranking-row__photo" />
+                      ) : (
+                        <span className="ulab-ranking-row__photo-ph">
+                          {playerShortName(row.player)[0]}
+                        </span>
+                      )}
+                      <span className="ulab-ranking-row__name">{playerShortName(row.player)}</span>
+                      <div className="ulab-ranking-row__bar-wrap">
+                        <div
+                          className="ulab-ranking-row__bar"
+                          style={{ width: `${barPct}%`, background: barColor }}
+                        />
+                      </div>
+                      <span className="ulab-ranking-row__val" style={{ color: valColor }}>
+                        {displayVal}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Scatterplot de plantilla
+// ─────────────────────────────────────────────────────────
+interface ScatterPoint {
+  player: ObjectivePlayer;
+  x: number;
+  y: number;
+}
+
+interface ScatterTooltip {
+  svgX: number;
+  svgY: number;
+  player: ObjectivePlayer;
+  xVal: number;
+  yVal: number;
+}
+
+const SCATTER_PAD = { top: 32, right: 24, bottom: 48, left: 52 };
+const SCATTER_W = 600;
+const SCATTER_H = 420;
+const PLOT_W = SCATTER_W - SCATTER_PAD.left - SCATTER_PAD.right;
+const PLOT_H = SCATTER_H - SCATTER_PAD.top - SCATTER_PAD.bottom;
+
+function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
+  const [xKey, setXKey] = useState(METRICS_CONFIG[2].key); // Goles
+  const [yKey, setYKey] = useState(METRICS_CONFIG[3].key); // xG
+  const [tooltip, setTooltip] = useState<ScatterTooltip | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const xConfig = METRICS_CONFIG.find((m) => m.key === xKey) ?? METRICS_CONFIG[2];
+  const yConfig = METRICS_CONFIG.find((m) => m.key === yKey) ?? METRICS_CONFIG[3];
+
+  const plotData = useMemo<ScatterPoint[]>(() => {
+    return players
+      .map((p) => {
+        const mObj = (p.metrics as Record<string, unknown>) || {};
+        const x = xConfig.getValue(mObj);
+        const y = yConfig.getValue(mObj);
+        if (x === null || y === null) return null;
+        return { player: p, x, y };
+      })
+      .filter((d): d is ScatterPoint => d !== null);
+  }, [players, xConfig, yConfig]);
+
+  const xs = plotData.map((d) => d.x);
+  const ys = plotData.map((d) => d.y);
+  const xMin = xs.length ? Math.min(...xs) : 0;
+  const xMax = xs.length ? Math.max(...xs) : 1;
+  const yMin = ys.length ? Math.min(...ys) : 0;
+  const yMax = ys.length ? Math.max(...ys) : 1;
+  const xMean = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
+  const yMean = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
+
+  // Padding around data extremes so dots don't sit on axes
+  const xPad = (xMax - xMin) * 0.1 || 0.5;
+  const yPad = (yMax - yMin) * 0.1 || 0.5;
+  const xLo = xMin - xPad;
+  const xHi = xMax + xPad;
+  const yLo = yMin - yPad;
+  const yHi = yMax + yPad;
+
+  function toSvgX(v: number) { return SCATTER_PAD.left + ((v - xLo) / (xHi - xLo)) * PLOT_W; }
+  function toSvgY(v: number) { return SCATTER_PAD.top + PLOT_H - ((v - yLo) / (yHi - yLo)) * PLOT_H; }
+
+  const meanSvgX = toSvgX(xMean);
+  const meanSvgY = toSvgY(yMean);
+
+  // Axis ticks (up to 5)
+  function niceSteps(lo: number, hi: number, n = 5) {
+    const raw = (hi - lo) / n;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const nice = [1, 2, 2.5, 5, 10].map((f) => f * mag).find((s) => s >= raw) ?? raw;
+    const start = Math.ceil(lo / nice) * nice;
+    const ticks: number[] = [];
+    for (let t = start; t <= hi + 1e-9; t += nice) ticks.push(Math.round(t * 1000) / 1000);
+    return ticks;
+  }
+  const xTicks = niceSteps(xLo, xHi);
+  const yTicks = niceSteps(yLo, yHi);
+
+  return (
+    <div className="ulab-scatter">
+      <div className="ulab-scatter__header">
+        <h3 className="ulab-section-title">Dispersión de plantilla</h3>
+        <div className="ulab-scatter__selectors">
+          <label>
+            <span>Eje X</span>
+            <select value={xKey} onChange={(e) => { setXKey(e.target.value); setTooltip(null); }}>
+              {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Eje Y</span>
+            <select value={yKey} onChange={(e) => { setYKey(e.target.value); setTooltip(null); }}>
+              {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="ulab-scatter__wrap" onMouseLeave={() => setTooltip(null)}>
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`}
+          className="ulab-scatter__svg"
+          aria-label="Scatter de plantilla"
+        >
+          {/* Plot background */}
+          <rect
+            x={SCATTER_PAD.left} y={SCATTER_PAD.top}
+            width={PLOT_W} height={PLOT_H}
+            fill="rgba(255,255,255,0.03)" rx={4}
+          />
+
+          {/* Horizontal grid lines */}
+          {yTicks.map((t) => {
+            const sy = toSvgY(t);
+            return sy >= SCATTER_PAD.top - 2 && sy <= SCATTER_PAD.top + PLOT_H + 2 ? (
+              <line key={`yg-${t}`}
+                x1={SCATTER_PAD.left} y1={sy} x2={SCATTER_PAD.left + PLOT_W} y2={sy}
+                stroke="rgba(255,255,255,0.06)" strokeWidth={1}
+              />
+            ) : null;
+          })}
+
+          {/* Vertical grid lines */}
+          {xTicks.map((t) => {
+            const sx = toSvgX(t);
+            return sx >= SCATTER_PAD.left - 2 && sx <= SCATTER_PAD.left + PLOT_W + 2 ? (
+              <line key={`xg-${t}`}
+                x1={sx} y1={SCATTER_PAD.top} x2={sx} y2={SCATTER_PAD.top + PLOT_H}
+                stroke="rgba(255,255,255,0.06)" strokeWidth={1}
+              />
+            ) : null;
+          })}
+
+          {/* X axis ticks + labels */}
+          {xTicks.map((t) => {
+            const sx = toSvgX(t);
+            return sx >= SCATTER_PAD.left - 2 && sx <= SCATTER_PAD.left + PLOT_W + 2 ? (
+              <g key={`xt-${t}`}>
+                <line x1={sx} y1={SCATTER_PAD.top + PLOT_H} x2={sx} y2={SCATTER_PAD.top + PLOT_H + 5} stroke="#666" strokeWidth={1} />
+                <text x={sx} y={SCATTER_PAD.top + PLOT_H + 18} textAnchor="middle" fontSize={10} fill="#777">
+                  {t.toFixed(xConfig.decimals <= 1 ? 0 : 1)}
+                </text>
+              </g>
+            ) : null;
+          })}
+
+          {/* Y axis ticks + labels */}
+          {yTicks.map((t) => {
+            const sy = toSvgY(t);
+            return sy >= SCATTER_PAD.top - 2 && sy <= SCATTER_PAD.top + PLOT_H + 2 ? (
+              <g key={`yt-${t}`}>
+                <line x1={SCATTER_PAD.left - 5} y1={sy} x2={SCATTER_PAD.left} y2={sy} stroke="#666" strokeWidth={1} />
+                <text x={SCATTER_PAD.left - 8} y={sy} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#777">
+                  {t.toFixed(yConfig.decimals <= 1 ? 0 : 1)}
+                </text>
+              </g>
+            ) : null;
+          })}
+
+          {/* Axis labels */}
+          <text
+            x={SCATTER_PAD.left + PLOT_W / 2}
+            y={SCATTER_H - 4}
+            textAnchor="middle" fontSize={11} fill="#aaa" fontWeight={600}
+          >
+            {xConfig.label}
+          </text>
+          <text
+            x={14}
+            y={SCATTER_PAD.top + PLOT_H / 2}
+            textAnchor="middle" fontSize={11} fill="#aaa" fontWeight={600}
+            transform={`rotate(-90, 14, ${SCATTER_PAD.top + PLOT_H / 2})`}
+          >
+            {yConfig.label}
+          </text>
+
+          {/* Mean lines (dashed gray) */}
+          <line
+            x1={meanSvgX} y1={SCATTER_PAD.top}
+            x2={meanSvgX} y2={SCATTER_PAD.top + PLOT_H}
+            stroke="#555" strokeWidth={1.5} strokeDasharray="5 4"
+          />
+          <line
+            x1={SCATTER_PAD.left} y1={meanSvgY}
+            x2={SCATTER_PAD.left + PLOT_W} y2={meanSvgY}
+            stroke="#555" strokeWidth={1.5} strokeDasharray="5 4"
+          />
+          <text x={meanSvgX + 4} y={SCATTER_PAD.top + 10} fontSize={9} fill="#666">media</text>
+          <text x={SCATTER_PAD.left + 4} y={meanSvgY - 5} fontSize={9} fill="#666">media</text>
+
+          {/* Dots */}
+          {plotData.map((d) => {
+            const cx = toSvgX(d.x);
+            const cy = toSvgY(d.y);
+            const line = positionLine(d.player.primary_position || d.player.primary_position_label);
+            const dotColor = LINE_COLOR[line];
+            const isActive = tooltip?.player.id === d.player.id;
+            return (
+              <g
+                key={d.player.id}
+                style={{ cursor: "pointer" }}
+                onMouseEnter={() => setTooltip({ svgX: cx, svgY: cy, player: d.player, xVal: d.x, yVal: d.y })}
+              >
+                <circle
+                  cx={cx} cy={cy} r={isActive ? 10 : 7}
+                  fill={dotColor} fillOpacity={isActive ? 1 : 0.8}
+                  stroke={isActive ? "#fff" : "#1a1a1a"} strokeWidth={isActive ? 2 : 1}
+                />
+                <text
+                  x={cx} y={cy - 11}
+                  textAnchor="middle" fontSize={9} fill="#ddd"
+                  paintOrder="stroke" stroke="#111" strokeWidth={2}
+                >
+                  {playerShortName(d.player)}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {/* Leyenda líneas */}
+        <div className="ulab-scatter__legend">
+          {(Object.entries(LINE_COLOR) as [PositionLine, string][]).map(([line, color]) => (
+            <span key={line} className="ulab-scatter__legend-item">
+              <i style={{ background: color }} />
+              {LINE_LABEL[line]}
+            </span>
+          ))}
+          <span className="ulab-scatter__legend-item ulab-scatter__legend-item--mean">
+            <i />
+            Media equipo
+          </span>
+        </div>
+
+        {/* Tooltip */}
+        {tooltip ? (
+          <div
+            className="ulab-scatter__tooltip"
+            style={{
+              left: `calc(${(tooltip.svgX / SCATTER_W) * 100}% + 14px)`,
+              top: `calc(${(tooltip.svgY / SCATTER_H) * 100}% - 28px)`,
+            }}
+          >
+            <strong>{playerShortName(tooltip.player)}</strong>
+            <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
+            <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -970,6 +1522,12 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
           />
         ) : null}
       </div>
+
+      {/* Rankings */}
+      <RankingsSection players={unionistasPlayers} />
+
+      {/* Scatter */}
+      <ScatterPlot players={unionistasPlayers} />
     </section>
   );
 }
