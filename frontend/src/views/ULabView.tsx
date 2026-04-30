@@ -450,7 +450,7 @@ function SquadPlayerCard({
   onSelect: () => void;
 }) {
   const stats = useMemo(() => extractStats(player), [player]);
-  const line = positionLine(player.primary_position_label);
+  const line = positionLine(player.primary_position || player.primary_position_label);
   const color = LINE_COLOR[line];
   const flag = countryFlag(player.birth_country_name);
   const age = player.birth_year ? new Date().getFullYear() - player.birth_year : null;
@@ -484,7 +484,9 @@ function SquadPlayerCard({
       <div className="ulab-squad-card__body">
         <strong className="ulab-squad-card__name">{playerShortName(player)}</strong>
         <span className="ulab-squad-card__position" style={{ color }}>
-          {positionDisplayLabel(player.primary_position_label || player.primary_position)}
+          {player.primary_position
+            ? normalizePositionLabel(player.primary_position)
+            : positionDisplayLabel(player.primary_position_label)}
         </span>
         <div className="ulab-squad-card__meta">
           {flag ? <span>{flag}</span> : null}
@@ -532,7 +534,7 @@ function PlayerDetailPanel({
   const [comparePlayers, setComparePlayers] = useState<ObjectivePlayer[]>([]);
 
   const stats = useMemo(() => extractStats(player), [player]);
-  const line = positionLine(player.primary_position_label || player.primary_position);
+  const line = positionLine(player.primary_position || player.primary_position_label);
   const color = LINE_COLOR[line];
   const flag = countryFlag(player.birth_country_name);
   const age = player.birth_year ? new Date().getFullYear() - player.birth_year : null;
@@ -678,7 +680,9 @@ function PlayerDetailPanel({
             <div className="ulab-detail-panel__pos-chips">
               {positionEntries.map((p, i) => (
                 <span key={i} className={`ulab-detail-panel__pos-chip${i === 0 ? " ulab-detail-panel__pos-chip--primary" : ""}`}>
-                  {positionDisplayLabel(p.label || p.raw)}
+                  {/* Preferir el código raw (RCMF) → nueva etiqueta oficial;
+                      si no hay código, caer al label guardado en BD */}
+                  {p.raw ? normalizePositionLabel(p.raw) : positionDisplayLabel(p.label)}
                   {p.pct != null ? <em>{p.pct}%</em> : null}
                 </span>
               ))}
@@ -899,7 +903,7 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
       delanteros: [],
     };
     for (const p of unionistasPlayers) {
-      groups[positionLine(p.primary_position_label)].push(p);
+      groups[positionLine(p.primary_position || p.primary_position_label)].push(p);
     }
     return groups;
   }, [unionistasPlayers]);
