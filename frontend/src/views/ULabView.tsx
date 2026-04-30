@@ -1106,10 +1106,29 @@ function PlayerDetailPanel({
 // ─────────────────────────────────────────────────────────
 // Rankings de plantilla
 // ─────────────────────────────────────────────────────────
-function RankingsSection({ players }: { players: ObjectivePlayer[] }) {
+function formatUpdatedAt(dateStr: string | null | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    return `Actualizado el ${d.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}`;
+  } catch {
+    return "";
+  }
+}
+
+function RankingsSection({
+  players,
+  updatedAt,
+}: {
+  players: ObjectivePlayer[];
+  updatedAt: string | null;
+}) {
   return (
     <div className="ulab-rankings">
-      <h3 className="ulab-section-title">Rankings de plantilla</h3>
+      <div className="ulab-rankings__head">
+        <h3 className="ulab-rankings__title">Rankings de plantilla</h3>
+        {updatedAt ? <span className="ulab-rankings__date">{formatUpdatedAt(updatedAt)}</span> : null}
+      </div>
       <div className="ulab-rankings-grid">
         {METRICS_CONFIG.map((metric) => {
           const rows = players
@@ -1199,15 +1218,18 @@ const PLOT_W = SCATTER_W - SCATTER_PAD.left - SCATTER_PAD.right;
 const PLOT_H = SCATTER_H - SCATTER_PAD.top - SCATTER_PAD.bottom;
 
 function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
-  const [xKey, setXKey] = useState(METRICS_CONFIG[2].key); // Goles
-  const [yKey, setYKey] = useState(METRICS_CONFIG[3].key); // xG
+  // Blank initial state — user must choose both axes
+  const [xKey, setXKey] = useState<string | null>(null);
+  const [yKey, setYKey] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<ScatterTooltip | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const xConfig = METRICS_CONFIG.find((m) => m.key === xKey) ?? METRICS_CONFIG[2];
-  const yConfig = METRICS_CONFIG.find((m) => m.key === yKey) ?? METRICS_CONFIG[3];
+  const xConfig = xKey ? METRICS_CONFIG.find((m) => m.key === xKey) ?? null : null;
+  const yConfig = yKey ? METRICS_CONFIG.find((m) => m.key === yKey) ?? null : null;
+  const ready = !!(xConfig && yConfig);
 
   const plotData = useMemo<ScatterPoint[]>(() => {
+    if (!xConfig || !yConfig) return [];
     return players
       .map((p) => {
         const mObj = (p.metrics as Record<string, unknown>) || {};
@@ -1228,9 +1250,8 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
   const xMean = xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
   const yMean = ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
 
-  // Padding around data extremes so dots don't sit on axes
-  const xPad = (xMax - xMin) * 0.1 || 0.5;
-  const yPad = (yMax - yMin) * 0.1 || 0.5;
+  const xPad = (xMax - xMin) * 0.12 || 0.5;
+  const yPad = (yMax - yMin) * 0.12 || 0.5;
   const xLo = xMin - xPad;
   const xHi = xMax + xPad;
   const yLo = yMin - yPad;
@@ -1239,197 +1260,203 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
   function toSvgX(v: number) { return SCATTER_PAD.left + ((v - xLo) / (xHi - xLo)) * PLOT_W; }
   function toSvgY(v: number) { return SCATTER_PAD.top + PLOT_H - ((v - yLo) / (yHi - yLo)) * PLOT_H; }
 
-  const meanSvgX = toSvgX(xMean);
-  const meanSvgY = toSvgY(yMean);
-
-  // Axis ticks (up to 5)
   function niceSteps(lo: number, hi: number, n = 5) {
     const raw = (hi - lo) / n;
-    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-9))));
     const nice = [1, 2, 2.5, 5, 10].map((f) => f * mag).find((s) => s >= raw) ?? raw;
     const start = Math.ceil(lo / nice) * nice;
     const ticks: number[] = [];
     for (let t = start; t <= hi + 1e-9; t += nice) ticks.push(Math.round(t * 1000) / 1000);
     return ticks;
   }
-  const xTicks = niceSteps(xLo, xHi);
-  const yTicks = niceSteps(yLo, yHi);
+  const xTicks = ready ? niceSteps(xLo, xHi) : [];
+  const yTicks = ready ? niceSteps(yLo, yHi) : [];
+  const meanSvgX = ready ? toSvgX(xMean) : 0;
+  const meanSvgY = ready ? toSvgY(yMean) : 0;
 
   return (
     <div className="ulab-scatter">
-      <div className="ulab-scatter__header">
-        <h3 className="ulab-section-title">Dispersión de plantilla</h3>
-        <div className="ulab-scatter__selectors">
-          <label>
-            <span>Eje X</span>
-            <select value={xKey} onChange={(e) => { setXKey(e.target.value); setTooltip(null); }}>
-              {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>Eje Y</span>
-            <select value={yKey} onChange={(e) => { setYKey(e.target.value); setTooltip(null); }}>
-              {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
-            </select>
-          </label>
-        </div>
-      </div>
+      <div className="ulab-scatter__card">
 
-      <div className="ulab-scatter__wrap" onMouseLeave={() => setTooltip(null)}>
-        <svg
-          ref={svgRef}
-          viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`}
-          className="ulab-scatter__svg"
-          aria-label="Scatter de plantilla"
-        >
-          {/* Plot background */}
-          <rect
-            x={SCATTER_PAD.left} y={SCATTER_PAD.top}
-            width={PLOT_W} height={PLOT_H}
-            fill="rgba(255,255,255,0.03)" rx={4}
-          />
-
-          {/* Horizontal grid lines */}
-          {yTicks.map((t) => {
-            const sy = toSvgY(t);
-            return sy >= SCATTER_PAD.top - 2 && sy <= SCATTER_PAD.top + PLOT_H + 2 ? (
-              <line key={`yg-${t}`}
-                x1={SCATTER_PAD.left} y1={sy} x2={SCATTER_PAD.left + PLOT_W} y2={sy}
-                stroke="rgba(255,255,255,0.06)" strokeWidth={1}
-              />
-            ) : null;
-          })}
-
-          {/* Vertical grid lines */}
-          {xTicks.map((t) => {
-            const sx = toSvgX(t);
-            return sx >= SCATTER_PAD.left - 2 && sx <= SCATTER_PAD.left + PLOT_W + 2 ? (
-              <line key={`xg-${t}`}
-                x1={sx} y1={SCATTER_PAD.top} x2={sx} y2={SCATTER_PAD.top + PLOT_H}
-                stroke="rgba(255,255,255,0.06)" strokeWidth={1}
-              />
-            ) : null;
-          })}
-
-          {/* X axis ticks + labels */}
-          {xTicks.map((t) => {
-            const sx = toSvgX(t);
-            return sx >= SCATTER_PAD.left - 2 && sx <= SCATTER_PAD.left + PLOT_W + 2 ? (
-              <g key={`xt-${t}`}>
-                <line x1={sx} y1={SCATTER_PAD.top + PLOT_H} x2={sx} y2={SCATTER_PAD.top + PLOT_H + 5} stroke="#666" strokeWidth={1} />
-                <text x={sx} y={SCATTER_PAD.top + PLOT_H + 18} textAnchor="middle" fontSize={10} fill="#777">
-                  {t.toFixed(xConfig.decimals <= 1 ? 0 : 1)}
-                </text>
-              </g>
-            ) : null;
-          })}
-
-          {/* Y axis ticks + labels */}
-          {yTicks.map((t) => {
-            const sy = toSvgY(t);
-            return sy >= SCATTER_PAD.top - 2 && sy <= SCATTER_PAD.top + PLOT_H + 2 ? (
-              <g key={`yt-${t}`}>
-                <line x1={SCATTER_PAD.left - 5} y1={sy} x2={SCATTER_PAD.left} y2={sy} stroke="#666" strokeWidth={1} />
-                <text x={SCATTER_PAD.left - 8} y={sy} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#777">
-                  {t.toFixed(yConfig.decimals <= 1 ? 0 : 1)}
-                </text>
-              </g>
-            ) : null;
-          })}
-
-          {/* Axis labels */}
-          <text
-            x={SCATTER_PAD.left + PLOT_W / 2}
-            y={SCATTER_H - 4}
-            textAnchor="middle" fontSize={11} fill="#aaa" fontWeight={600}
-          >
-            {xConfig.label}
-          </text>
-          <text
-            x={14}
-            y={SCATTER_PAD.top + PLOT_H / 2}
-            textAnchor="middle" fontSize={11} fill="#aaa" fontWeight={600}
-            transform={`rotate(-90, 14, ${SCATTER_PAD.top + PLOT_H / 2})`}
-          >
-            {yConfig.label}
-          </text>
-
-          {/* Mean lines (dashed gray) */}
-          <line
-            x1={meanSvgX} y1={SCATTER_PAD.top}
-            x2={meanSvgX} y2={SCATTER_PAD.top + PLOT_H}
-            stroke="#555" strokeWidth={1.5} strokeDasharray="5 4"
-          />
-          <line
-            x1={SCATTER_PAD.left} y1={meanSvgY}
-            x2={SCATTER_PAD.left + PLOT_W} y2={meanSvgY}
-            stroke="#555" strokeWidth={1.5} strokeDasharray="5 4"
-          />
-          <text x={meanSvgX + 4} y={SCATTER_PAD.top + 10} fontSize={9} fill="#666">media</text>
-          <text x={SCATTER_PAD.left + 4} y={meanSvgY - 5} fontSize={9} fill="#666">media</text>
-
-          {/* Dots */}
-          {plotData.map((d) => {
-            const cx = toSvgX(d.x);
-            const cy = toSvgY(d.y);
-            const line = positionLine(d.player.primary_position || d.player.primary_position_label);
-            const dotColor = LINE_COLOR[line];
-            const isActive = tooltip?.player.id === d.player.id;
-            return (
-              <g
-                key={d.player.id}
-                style={{ cursor: "pointer" }}
-                onMouseEnter={() => setTooltip({ svgX: cx, svgY: cy, player: d.player, xVal: d.x, yVal: d.y })}
+        {/* Cabecera del cajetín */}
+        <div className="ulab-scatter__card-head">
+          <h3 className="ulab-scatter__title">Dispersión de plantilla</h3>
+          <div className="ulab-scatter__selectors">
+            <label>
+              <span>Eje X</span>
+              <select
+                value={xKey ?? ""}
+                onChange={(e) => { setXKey(e.target.value || null); setTooltip(null); }}
               >
-                <circle
-                  cx={cx} cy={cy} r={isActive ? 10 : 7}
-                  fill={dotColor} fillOpacity={isActive ? 1 : 0.8}
-                  stroke={isActive ? "#fff" : "#1a1a1a"} strokeWidth={isActive ? 2 : 1}
-                />
-                <text
-                  x={cx} y={cy - 11}
-                  textAnchor="middle" fontSize={9} fill="#ddd"
-                  paintOrder="stroke" stroke="#111" strokeWidth={2}
-                >
-                  {playerShortName(d.player)}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Leyenda líneas */}
-        <div className="ulab-scatter__legend">
-          {(Object.entries(LINE_COLOR) as [PositionLine, string][]).map(([line, color]) => (
-            <span key={line} className="ulab-scatter__legend-item">
-              <i style={{ background: color }} />
-              {LINE_LABEL[line]}
-            </span>
-          ))}
-          <span className="ulab-scatter__legend-item ulab-scatter__legend-item--mean">
-            <i />
-            Media equipo
-          </span>
+                <option value="">— Seleccionar métrica —</option>
+                {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Eje Y</span>
+              <select
+                value={yKey ?? ""}
+                onChange={(e) => { setYKey(e.target.value || null); setTooltip(null); }}
+              >
+                <option value="">— Seleccionar métrica —</option>
+                {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+              </select>
+            </label>
+          </div>
         </div>
 
-        {/* Tooltip */}
-        {tooltip ? (
-          <div
-            className="ulab-scatter__tooltip"
-            style={{
-              left: `calc(${(tooltip.svgX / SCATTER_W) * 100}% + 14px)`,
-              top: `calc(${(tooltip.svgY / SCATTER_H) * 100}% - 28px)`,
-            }}
-          >
-            <strong>{playerShortName(tooltip.player)}</strong>
-            <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
-            <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
-          </div>
-        ) : null}
+        {/* Cuerpo */}
+        <div className="ulab-scatter__body">
+          {!ready ? (
+            <div className="ulab-scatter__empty">
+              <div className="ulab-scatter__empty-icon">📊</div>
+              <p>Selecciona las métricas para los ejes X e Y<br />y visualiza la distribución de la plantilla</p>
+            </div>
+          ) : (
+            <div className="ulab-scatter__wrap" onMouseLeave={() => setTooltip(null)}>
+              <svg
+                ref={svgRef}
+                viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`}
+                className="ulab-scatter__svg"
+                aria-label="Scatter de plantilla"
+              >
+                {/* Axes */}
+                <line
+                  x1={SCATTER_PAD.left} y1={SCATTER_PAD.top}
+                  x2={SCATTER_PAD.left} y2={SCATTER_PAD.top + PLOT_H}
+                  stroke="#2a2a2a" strokeWidth={1}
+                />
+                <line
+                  x1={SCATTER_PAD.left} y1={SCATTER_PAD.top + PLOT_H}
+                  x2={SCATTER_PAD.left + PLOT_W} y2={SCATTER_PAD.top + PLOT_H}
+                  stroke="#2a2a2a" strokeWidth={1}
+                />
+
+                {/* X axis ticks + labels */}
+                {xTicks.map((t) => {
+                  const sx = toSvgX(t);
+                  if (sx < SCATTER_PAD.left - 2 || sx > SCATTER_PAD.left + PLOT_W + 2) return null;
+                  return (
+                    <g key={`xt-${t}`}>
+                      <line x1={sx} y1={SCATTER_PAD.top + PLOT_H} x2={sx} y2={SCATTER_PAD.top + PLOT_H + 4} stroke="#333" strokeWidth={1} />
+                      <text x={sx} y={SCATTER_PAD.top + PLOT_H + 16} textAnchor="middle" fontSize={10} fill="#555">
+                        {t.toFixed(xConfig!.decimals <= 1 ? 0 : 1)}{xConfig!.unit ?? ""}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* Y axis ticks + labels */}
+                {yTicks.map((t) => {
+                  const sy = toSvgY(t);
+                  if (sy < SCATTER_PAD.top - 2 || sy > SCATTER_PAD.top + PLOT_H + 2) return null;
+                  return (
+                    <g key={`yt-${t}`}>
+                      <line x1={SCATTER_PAD.left - 4} y1={sy} x2={SCATTER_PAD.left} y2={sy} stroke="#333" strokeWidth={1} />
+                      <text x={SCATTER_PAD.left - 7} y={sy} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#555">
+                        {t.toFixed(yConfig!.decimals <= 1 ? 0 : 1)}{yConfig!.unit ?? ""}
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* Axis labels */}
+                <text
+                  x={SCATTER_PAD.left + PLOT_W / 2}
+                  y={SCATTER_H - 2}
+                  textAnchor="middle" fontSize={11} fill="#666" fontWeight={600}
+                >
+                  {xConfig!.label}
+                </text>
+                <text
+                  x={13}
+                  y={SCATTER_PAD.top + PLOT_H / 2}
+                  textAnchor="middle" fontSize={11} fill="#666" fontWeight={600}
+                  transform={`rotate(-90, 13, ${SCATTER_PAD.top + PLOT_H / 2})`}
+                >
+                  {yConfig!.label}
+                </text>
+
+                {/* Mean lines (dashed) */}
+                <line
+                  x1={meanSvgX} y1={SCATTER_PAD.top}
+                  x2={meanSvgX} y2={SCATTER_PAD.top + PLOT_H}
+                  stroke="#3a3a3a" strokeWidth={1.5} strokeDasharray="6 4"
+                />
+                <line
+                  x1={SCATTER_PAD.left} y1={meanSvgY}
+                  x2={SCATTER_PAD.left + PLOT_W} y2={meanSvgY}
+                  stroke="#3a3a3a" strokeWidth={1.5} strokeDasharray="6 4"
+                />
+                <text x={meanSvgX + 5} y={SCATTER_PAD.top + 12} fontSize={9} fill="#444">media</text>
+                <text x={SCATTER_PAD.left + 5} y={meanSvgY - 5} fontSize={9} fill="#444">media</text>
+
+                {/* Dots */}
+                {plotData.map((d) => {
+                  const cx = toSvgX(d.x);
+                  const cy = toSvgY(d.y);
+                  const ln = positionLine(d.player.primary_position || d.player.primary_position_label);
+                  const dotColor = LINE_COLOR[ln];
+                  const isActive = tooltip?.player.id === d.player.id;
+                  return (
+                    <g
+                      key={d.player.id}
+                      style={{ cursor: "pointer" }}
+                      onMouseEnter={() => setTooltip({ svgX: cx, svgY: cy, player: d.player, xVal: d.x, yVal: d.y })}
+                    >
+                      <circle
+                        cx={cx} cy={cy} r={isActive ? 10 : 7}
+                        fill={dotColor} fillOpacity={isActive ? 1 : 0.85}
+                        stroke={isActive ? "#fff" : "#0d0d0d"} strokeWidth={isActive ? 2 : 1.5}
+                      />
+                      <text
+                        x={cx} y={cy - 12}
+                        textAnchor="middle" fontSize={9} fill="#ccc"
+                        paintOrder="stroke" stroke="#0d0d0d" strokeWidth={2.5}
+                      >
+                        {playerShortName(d.player)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+
+              {/* Leyenda */}
+              <div className="ulab-scatter__legend">
+                {(Object.entries(LINE_COLOR) as [PositionLine, string][]).map(([ln, color]) => (
+                  <span key={ln} className="ulab-scatter__legend-item">
+                    <i style={{ background: color }} />
+                    {LINE_LABEL[ln]}
+                  </span>
+                ))}
+                <span className="ulab-scatter__legend-item ulab-scatter__legend-item--mean">
+                  <i />
+                  Media equipo
+                </span>
+              </div>
+
+              {/* Tooltip flotante */}
+              {tooltip && xConfig && yConfig ? (
+                <div
+                  className="ulab-scatter__tooltip"
+                  style={{
+                    left: `calc(${(tooltip.svgX / SCATTER_W) * 100}% + 14px)`,
+                    top: `calc(${(tooltip.svgY / SCATTER_H) * 100}% - 24px)`,
+                  }}
+                >
+                  <strong>{playerShortName(tooltip.player)}</strong>
+                  <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
+                  <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
 
 // ─────────────────────────────────────────────────────────
 // Vista principal ULab
@@ -1524,7 +1551,10 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
       </div>
 
       {/* Rankings */}
-      <RankingsSection players={unionistasPlayers} />
+      <RankingsSection
+        players={unionistasPlayers}
+        updatedAt={unionistasPlayers[0]?.updated_at ?? null}
+      />
 
       {/* Scatter */}
       <ScatterPlot players={unionistasPlayers} />
