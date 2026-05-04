@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ObjectivePlayer } from "../types";
 import {
   calculateRadarSimilarity,
@@ -295,7 +295,7 @@ function playerShortName(player: ObjectivePlayer): string {
 // ─────────────────────────────────────────────────────────
 // Comparación multi-radar (overlay SVG)
 // ─────────────────────────────────────────────────────────
-const COMPARE_PALETTE = ["#e0d200", "#3b82f6", "#d9480f"];
+const COMPARE_PALETTE = ["#3b82f6", "#d9480f", "#16813a"];
 
 function buildRadarPolygon(
   values: number[],
@@ -313,6 +313,57 @@ function buildRadarPolygon(
       return `${x},${y}`;
     })
     .join(" ");
+}
+
+function overlayPolarPoint(center: number, radius: number, angle: number, value: number) {
+  const scaledRadius = radius * Math.max(0, Math.min(100, value)) / 100;
+  return {
+    x: center + scaledRadius * Math.cos(angle),
+    y: center + scaledRadius * Math.sin(angle),
+  };
+}
+
+function overlayBuildRadarPoints(values: number[], center: number, radius: number) {
+  const total = values.length;
+  const points = values.map((value, index) => {
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / total;
+    const point = overlayPolarPoint(center, radius, angle, value);
+    return `${point.x.toFixed(1)},${point.y.toFixed(1)}`;
+  });
+
+  return points.join(" ");
+}
+
+function overlayBuildRadarPointList(values: number[], center: number, radius: number) {
+  const total = values.length;
+  return values.map((value, index) => {
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / total;
+    return {
+      angle,
+      ...overlayPolarPoint(center, radius, angle, value),
+    };
+  });
+}
+
+function overlaySplitRadarLabel(value: string) {
+  const label = formatLabel(value);
+  if (label.length <= 13) return [label];
+  const parts = label.split(" ");
+  const lines: string[] = [];
+  let current = "";
+
+  for (const part of parts) {
+    const candidate = current ? `${current} ${part}` : part;
+    if (candidate.length > 13 && current) {
+      lines.push(current);
+      current = part;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines;
 }
 
 function buildLabelPoint(index: number, total: number, center: number, labelRadius: number) {
@@ -333,6 +384,14 @@ function formatLabel(label: string): string {
     .replace("Intercepciones", "Intercepc.")
     .replace("Asistencias", "Asist.")
     .replace("Regates", "Reg.");
+}
+
+function normalizeRadarKey(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("es");
 }
 
 interface CompareEntry {
@@ -432,6 +491,144 @@ function CompareRadar({ entries, mode }: { entries: CompareEntry[]; mode: Object
             <strong>{entry.label}</strong>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function buildSharedRadarSeries(baseRadar: ReturnType<typeof getObjectiveRadarForMode>, candidateRadar: ReturnType<typeof getObjectiveRadarForMode>) {
+  if (!baseRadar || !candidateRadar) return null;
+
+  const baseItems = getObjectiveRadarItems(baseRadar);
+  const candidateItems = getObjectiveRadarItems(candidateRadar);
+  const candidateValues = new Map(candidateItems.map((item) => [normalizeRadarKey(item.label), item]));
+  const sharedItems = baseItems
+    .map((baseItem) => {
+      const candidateItem = candidateValues.get(normalizeRadarKey(baseItem.label));
+      if (!candidateItem) return null;
+      return {
+        label: baseItem.label,
+        baseValue: baseItem.value,
+        candidateValue: candidateItem.value,
+        candidateColor: candidateItem.color,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  if (sharedItems.length < 3) return null;
+
+  return {
+    labels: sharedItems.map((item) => item.label),
+    baseValues: sharedItems.map((item) => item.baseValue),
+    candidateValues: sharedItems.map((item) => item.candidateValue),
+    candidateColors: sharedItems.map((item) => item.candidateColor),
+  };
+}
+
+function SimilarOverlayRadar({
+  baseRadar,
+  candidateRadar,
+}: {
+  baseRadar: ReturnType<typeof getObjectiveRadarForMode>;
+  candidateRadar: ReturnType<typeof getObjectiveRadarForMode>;
+}) {
+  const shared = buildSharedRadarSeries(baseRadar, candidateRadar);
+  if (!shared) return null;
+
+  const center = 170;
+  const radius = 100;
+  const labelRadius = 136;
+  const gridLevels = [25, 50, 75, 100];
+  const labelPoints = overlayBuildRadarPointList(new Array(shared.labels.length).fill(100), center, labelRadius);
+  const valuePoints = overlayBuildRadarPointList(shared.candidateValues, center, radius + 8);
+  const basePoints = overlayBuildRadarPointList(shared.baseValues, center, radius);
+
+  return (
+    <div className="objective-radar-card objective-radar-card--compact ulab-similar-overlay-radar-card">
+      <div className="objective-radar-card__head">
+        <div>
+          <span className="profile-kicker">Radar Wyscout</span>
+          <h3>Percentiles por rol</h3>
+        </div>
+      </div>
+      <div className="objective-radar-layout objective-radar-layout--compact">
+        <svg aria-label="Radar comparado con Unionistas" className="objective-radar" viewBox="0 0 340 340">
+          {gridLevels.map((level) => (
+            <polygon
+              className="objective-radar__grid"
+              key={level}
+              points={overlayBuildRadarPoints(new Array(shared.labels.length).fill(level), center, radius)}
+            />
+          ))}
+          {shared.labels.map((label, index) => {
+            const angle = -Math.PI / 2 + (index * Math.PI * 2) / shared.labels.length;
+            const valuePoint = valuePoints[index];
+            const labelPoint = labelPoints[index];
+            const labelLines = overlaySplitRadarLabel(label);
+            const anchor = labelPoint.x < center - 8 ? "end" : labelPoint.x > center + 8 ? "start" : "middle";
+            return (
+              <g key={`${label}-${index}`}>
+                <line
+                  className="objective-radar__axis"
+                  x1={center}
+                  x2={overlayPolarPoint(center, radius, angle, 100).x}
+                  y1={center}
+                  y2={overlayPolarPoint(center, radius, angle, 100).y}
+                />
+                <text
+                  className="objective-radar__metric-label"
+                  textAnchor={anchor}
+                  x={labelPoint.x}
+                  y={labelPoint.y}
+                >
+                  {labelLines.map((line: string, lineIndex: number) => (
+                    <tspan dy={lineIndex === 0 ? 0 : 10} key={`${label}-${line}`} x={labelPoint.x}>
+                      {line}
+                    </tspan>
+                  ))}
+                </text>
+                <circle
+                  cx={valuePoint.x}
+                  cy={valuePoint.y}
+                  fill={shared.candidateColors[index] || "#16813a"}
+                  r="3.5"
+                />
+                <text
+                  className="objective-radar__value-label"
+                  textAnchor="middle"
+                  x={valuePoint.x}
+                  y={valuePoint.y - 7}
+                >
+                  {shared.candidateValues[index] || 0}
+                </text>
+              </g>
+            );
+          })}
+          <polygon className="objective-radar__area" points={overlayBuildRadarPoints(shared.candidateValues, center, radius)} />
+          <polygon className="objective-radar__stroke" points={overlayBuildRadarPoints(shared.candidateValues, center, radius)} />
+          <polygon
+            className="ulab-similar-overlay-radar__reference"
+            points={overlayBuildRadarPoints(shared.baseValues, center, radius)}
+          />
+          {basePoints.map((point, index) => (
+            <g key={`reference-point-${shared.labels[index]}-${index}`}>
+              <line
+                className="ulab-similar-overlay-radar__reference-mark"
+                x1={point.x - 2.4}
+                x2={point.x + 2.4}
+                y1={point.y - 2.4}
+                y2={point.y + 2.4}
+              />
+              <line
+                className="ulab-similar-overlay-radar__reference-mark"
+                x1={point.x - 2.4}
+                x2={point.x + 2.4}
+                y1={point.y + 2.4}
+                y2={point.y - 2.4}
+              />
+            </g>
+          ))}
+        </svg>
       </div>
     </div>
   );
@@ -691,6 +888,9 @@ function SquadPlayerCard({
       aria-pressed={isSelected}
       style={{ "--line-color": color } as React.CSSProperties}
     >
+      <span className="ulab-squad-card__crest" aria-hidden="true">
+        <img src="/escudo/unionistar.png" alt="" />
+      </span>
       <div className="ulab-squad-card__photo">
         {isRealPhoto(player.image) ? (
           <img src={player.image!} alt={playerShortName(player)} />
@@ -741,21 +941,24 @@ function SquadPlayerCard({
 // ─────────────────────────────────────────────────────────
 // Panel de detalle del jugador seleccionado
 // ─────────────────────────────────────────────────────────
-type ULabMode = "idle" | "similar" | "compare";
+type ULabMode = "radar" | "similar" | "compare" | "ranking";
 
 function PlayerDetailPanel({
   player,
   allObjectivePlayers,
+  squadPlayers,
   onClose,
 }: {
   player: ObjectivePlayer;
   allObjectivePlayers: ObjectivePlayer[];
+  squadPlayers: ObjectivePlayer[];
   onClose: () => void;
 }) {
-  const [ulabMode, setULabMode] = useState<ULabMode>("idle");
+  const [ulabMode, setULabMode] = useState<ULabMode>("radar");
   const [radarMode, setRadarMode] = useState<ObjectiveRadarMode>("specific");
   const [compareSearch, setCompareSearch] = useState("");
   const [comparePlayers, setComparePlayers] = useState<ObjectivePlayer[]>([]);
+  const [expandedSimilarPlayerId, setExpandedSimilarPlayerId] = useState<string | null>(null);
 
   const stats = useMemo(() => extractStats(player), [player]);
   const line = positionLine(player.primary_position || player.primary_position_label);
@@ -770,6 +973,31 @@ function PlayerDetailPanel({
   const radarItems = hasRadar && activeRadar ? getObjectiveRadarItems(activeRadar) : [];
   const blockBalance = getObjectiveRadarBlockBalance(radarItems);
   const unionValue = getUnionValue(blockBalance);
+  const rankedRadarItems = [...radarItems].sort((a, b) => b.value - a.value);
+  const radarStrengths = rankedRadarItems.slice(0, 3);
+  const radarAlerts = [...radarItems].sort((a, b) => a.value - b.value).slice(0, 3);
+
+  useEffect(() => {
+    if (!hasRadar && ulabMode !== "ranking") {
+      setULabMode("ranking");
+    }
+    if (hasRadar && ulabMode === "radar") {
+      return;
+    }
+  }, [hasRadar, ulabMode]);
+
+  useEffect(() => {
+    if (ulabMode !== "compare" && comparePlayers.length > 0) {
+      setComparePlayers([]);
+      setCompareSearch("");
+    }
+  }, [comparePlayers.length, ulabMode]);
+
+  useEffect(() => {
+    if (ulabMode !== "similar" && expandedSimilarPlayerId) {
+      setExpandedSimilarPlayerId(null);
+    }
+  }, [expandedSimilarPlayerId, ulabMode]);
 
   const m = (player.metrics as Record<string, unknown>) || {};
 
@@ -814,8 +1042,9 @@ function PlayerDetailPanel({
         if ((cRadar.competition_name || "").toLowerCase() !== compComp) return null;
         const sim = calculateRadarSimilarity(activeRadar, cRadar);
         if (sim === null) return null;
-        const cb = getObjectiveRadarBlockBalance(getObjectiveRadarItems(cRadar));
-        return { player: candidate, similarity: sim, blockBalance: cb };
+        const radarItems = getObjectiveRadarItems(cRadar);
+        const cb = getObjectiveRadarBlockBalance(radarItems);
+        return { player: candidate, similarity: sim, blockBalance: cb, radar: cRadar, radarItems };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => b.similarity - a.similarity)
@@ -857,6 +1086,24 @@ function PlayerDetailPanel({
     })),
   ];
 
+  // ── Posición del jugador en cada ranking de equipo ────────
+  const playerRankings = useMemo(() => {
+    const mObj = (player.metrics as Record<string, unknown>) || {};
+    return METRICS_CONFIG.map((metric) => {
+      const myVal = metric.getValue(mObj);
+      if (myVal === null) return null;
+      const sorted = squadPlayers
+        .map((p) => {
+          const pm = (p.metrics as Record<string, unknown>) || {};
+          return metric.getValue(pm);
+        })
+        .filter((v): v is number => v !== null)
+        .sort((a, b) => metric.higherIsBetter ? b - a : a - b);
+      const rank = sorted.findIndex((v) => Math.abs(v - myVal) < 1e-6) + 1;
+      return { metric, value: myVal, rank, total: sorted.length };
+    }).filter((r): r is NonNullable<typeof r> => r !== null);
+  }, [player, squadPlayers]);
+
   return (
     <aside className="ulab-detail-panel">
       <div className="ulab-detail-panel__header" style={{ borderColor: color }}>
@@ -872,6 +1119,9 @@ function PlayerDetailPanel({
             <p className="ulab-detail-panel__fullname">{player.full_name}</p>
           </div>
         </div>
+        <span className="ulab-detail-panel__crest" aria-hidden="true">
+          <img src="/escudo/unionistar.png" alt="" />
+        </span>
         <button className="ulab-detail-panel__close" onClick={onClose} type="button" aria-label="Cerrar">
           ×
         </button>
@@ -940,44 +1190,111 @@ function PlayerDetailPanel({
         </div>
       ) : null}
 
-      {/* CTAs — solo si hay radar */}
+      {/* Navegación principal del panel */}
       {hasRadar ? (
         <div className="ulab-detail-panel__actions">
           <button
             type="button"
-            className={`ulab-action-btn${ulabMode === "similar" ? " ulab-action-btn--active" : ""}`}
-            onClick={() => setULabMode(ulabMode === "similar" ? "idle" : "similar")}
+            className={`ulab-action-btn${ulabMode === "radar" ? " ulab-action-btn--active" : ""}`}
+            onClick={() => setULabMode("radar")}
           >
-            <span>🔍</span> Buscar similares
+            <span>📊</span> Radar
+          </button>
+          <button
+            type="button"
+            className={`ulab-action-btn${ulabMode === "similar" ? " ulab-action-btn--active" : ""}`}
+            onClick={() => setULabMode("similar")}
+          >
+            <span>🔍</span> Similares
           </button>
           <button
             type="button"
             className={`ulab-action-btn${ulabMode === "compare" ? " ulab-action-btn--active" : ""}`}
-            onClick={() => {
-              setULabMode(ulabMode === "compare" ? "idle" : "compare");
-              setComparePlayers([]);
-            }}
+            onClick={() => setULabMode("compare")}
           >
             <span>⚖️</span> Comparar
           </button>
+          <button
+            type="button"
+            className={`ulab-action-btn${ulabMode === "ranking" ? " ulab-action-btn--active" : ""}`}
+            onClick={() => setULabMode("ranking")}
+          >
+            <span>🏅</span> Ranking
+          </button>
         </div>
-      ) : null}
+      ) : (
+        <div className="ulab-detail-panel__actions">
+          <button
+            type="button"
+            className="ulab-action-btn ulab-action-btn--active"
+            onClick={() => setULabMode("ranking")}
+          >
+            <span>🏅</span> Ranking
+          </button>
+        </div>
+      )}
 
-      {/* Radar del jugador (modo idle y compare) */}
-      {hasRadar && activeRadar && ulabMode !== "similar" ? (
+      {/* Radar del jugador */}
+      {hasRadar && activeRadar && ulabMode === "radar" ? (
         <div className="ulab-detail-panel__radar">
-          {ulabMode === "compare" && comparePlayers.length > 0 ? (
-            <CompareRadar entries={compareEntries} mode={radarMode} />
-          ) : (
-            <ObjectiveRadar
-              compact
-              mode={radarMode}
-              onModeChange={setRadarMode}
-              radar={activeRadar}
-              radarSpecific={radarSpecific}
-              radarGeneral={radarGeneral}
-            />
-          )}
+          <ObjectiveRadar
+            compact
+            mode={radarMode}
+            onModeChange={setRadarMode}
+            radar={activeRadar}
+            radarSpecific={radarSpecific}
+            radarGeneral={radarGeneral}
+          />
+          <div className="objective-radar-legend ulab-detail-panel__radar-legend">
+            {blockBalance.map((group) => (
+              <span key={group.key}>
+                <i className={group.className} />
+                {group.title}
+              </span>
+            ))}
+          </div>
+          <div className="ulab-detail-panel__radar-insights">
+            <div className="ulab-detail-panel__radar-card">
+              <h4>Fortalezas</h4>
+              {radarStrengths.map((item) => (
+                <div className="ulab-detail-panel__radar-row" key={`strength-${item.key}`}>
+                  <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                  <p>{item.label}</p>
+                </div>
+              ))}
+            </div>
+            <div className="ulab-detail-panel__radar-card">
+              <h4>A mejorar</h4>
+              {radarAlerts.map((item) => (
+                <div className="ulab-detail-panel__radar-row" key={`alert-${item.key}`}>
+                  <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                  <p>{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="ulab-detail-panel__radar-card ulab-detail-panel__radar-card--balance">
+            <h4>Balance por bloques</h4>
+            <div className="ulab-detail-panel__radar-balance-grid">
+              {blockBalance.map((group) => (
+                <div className="ulab-detail-panel__radar-balance-row" key={`balance-${group.key}`}>
+                  <div>
+                    <span>
+                      <i className={group.className} />
+                      {group.title}
+                    </span>
+                    <strong>{group.average}</strong>
+                  </div>
+                  <div className="ulab-detail-panel__radar-balance-track">
+                    <span
+                      className={radarPercentileClass(group.average)}
+                      style={{ width: `${Math.max(4, group.average)}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -1022,22 +1339,27 @@ function PlayerDetailPanel({
 
           {/* Toggle modo del radar en comparación */}
           {comparePlayers.length > 0 ? (
-            <div className="ulab-compare-mode-toggle">
-              <button
-                type="button"
-                className={radarMode === "specific" ? "active" : ""}
-                onClick={() => setRadarMode("specific")}
-              >
-                Posición específica
-              </button>
-              <button
-                type="button"
-                className={radarMode === "general" ? "active" : ""}
-                onClick={() => setRadarMode("general")}
-              >
-                Posición general
-              </button>
-            </div>
+            <>
+              <div className="ulab-compare-mode-toggle">
+                <button
+                  type="button"
+                  className={radarMode === "specific" ? "active" : ""}
+                  onClick={() => setRadarMode("specific")}
+                >
+                  Posición específica
+                </button>
+                <button
+                  type="button"
+                  className={radarMode === "general" ? "active" : ""}
+                  onClick={() => setRadarMode("general")}
+                >
+                  Posición general
+                </button>
+              </div>
+              <div className="ulab-detail-panel__radar">
+                <CompareRadar entries={compareEntries} mode={radarMode} />
+              </div>
+            </>
           ) : null}
         </div>
       ) : null}
@@ -1072,31 +1394,165 @@ function PlayerDetailPanel({
                 const sAge = s.player.birth_year ? new Date().getFullYear() - s.player.birth_year : null;
                 const sUV = getUnionValue(s.blockBalance);
                 const simColor = s.similarity >= 85 ? "#16813a" : s.similarity >= 70 ? "#e0d200" : "#d9480f";
+                const isExpanded = expandedSimilarPlayerId === s.player.id;
+                const rankedRadarItems = [...s.radarItems].sort((a, b) => b.value - a.value);
+                const radarStrengths = rankedRadarItems.slice(0, 3);
+                const radarAlerts = [...s.radarItems].sort((a, b) => a.value - b.value).slice(0, 3);
                 return (
-                  <li key={s.player.id} className="ulab-similar-item">
-                    <span className="ulab-similar-item__rank">{i + 1}</span>
-                    {isRealPhoto(s.player.image) ? (
-                      <img src={s.player.image!} alt={s.player.name || ""} className="ulab-similar-item__photo" />
-                    ) : (
-                      <div className="ulab-similar-item__photo-placeholder" />
-                    )}
-                    <div className="ulab-similar-item__info">
-                      <strong>{s.player.name || s.player.full_name}</strong>
-                      <span>{s.player.current_team_name}</span>
-                      <small>
-                        {s.player.primary_position_label}
-                        {sAge ? ` · ${sAge} años` : ""}
-                        {sUV > 0 ? ` · UV ${sUV}` : ""}
-                      </small>
-                    </div>
-                    <span className="ulab-similar-item__sim" style={{ color: simColor }}>
-                      {s.similarity}%
-                    </span>
+                  <li
+                    key={s.player.id}
+                    className={`ulab-similar-item${isExpanded ? " ulab-similar-item--expanded" : ""}`}
+                  >
+                    <button
+                      className="ulab-similar-item__trigger"
+                      onClick={() =>
+                        setExpandedSimilarPlayerId((current) => (current === s.player.id ? null : s.player.id))
+                      }
+                      type="button"
+                    >
+                      <span className="ulab-similar-item__rank">{i + 1}</span>
+                      {isRealPhoto(s.player.image) ? (
+                        <img src={s.player.image!} alt={s.player.name || ""} className="ulab-similar-item__photo" />
+                      ) : (
+                        <div className="ulab-similar-item__photo-placeholder" />
+                      )}
+                      <div className="ulab-similar-item__info">
+                        <strong>{s.player.name || s.player.full_name}</strong>
+                        <span>{s.player.current_team_name}</span>
+                        <small>
+                          {s.player.primary_position_label}
+                          {sAge ? ` · ${sAge} años` : ""}
+                          {sUV > 0 ? ` · UV ${sUV}` : ""}
+                        </small>
+                      </div>
+                      <div className="ulab-similar-item__summary">
+                        <span className="ulab-similar-item__sim" style={{ color: simColor }}>
+                          {s.similarity}%
+                        </span>
+                        <span className="ulab-similar-item__chevron">{isExpanded ? "−" : "+"}</span>
+                      </div>
+                    </button>
+                    {isExpanded ? (
+                      <div className="ulab-similar-item__details">
+                        <div className="objective-radar-legend ulab-similar-item__legend">
+                          {s.blockBalance.map((group) => (
+                            <span key={group.key}>
+                              <i className={group.className} />
+                              {group.title}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="ulab-similar-item__radar">
+                          <div className="objective-radar-controls ulab-similar-item__radar-controls">
+                            <button
+                              type="button"
+                              className={radarMode === "specific" ? "active" : ""}
+                              onClick={() => setRadarMode("specific")}
+                            >
+                              Posición específica
+                            </button>
+                            <button
+                              type="button"
+                              className={radarMode === "general" ? "active" : ""}
+                              onClick={() => setRadarMode("general")}
+                            >
+                              Posición general
+                            </button>
+                          </div>
+                          <SimilarOverlayRadar baseRadar={activeRadar} candidateRadar={s.radar} />
+                        </div>
+                        <div className="objective-percentile-legend ulab-similar-item__percentile-legend">
+                          <span><i className="percentile-low" />0-24 Bajo</span>
+                          <span><i className="percentile-medium" />25-49 Medio-bajo</span>
+                          <span><i className="percentile-good" />50-79 Bueno</span>
+                          <span><i className="percentile-elite" />80-100 Alto</span>
+                        </div>
+                        <div className="ulab-similar-item__insights">
+                          <div className="ulab-similar-item__insight-card">
+                            <h4>Fortalezas</h4>
+                            {radarStrengths.map((item) => (
+                              <div className="ulab-similar-item__insight-row" key={`strength-${s.player.id}-${item.key}`}>
+                                <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                                <p>{item.label}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="ulab-similar-item__insight-card">
+                            <h4>A mejorar</h4>
+                            {radarAlerts.map((item) => (
+                              <div className="ulab-similar-item__insight-row" key={`alert-${s.player.id}-${item.key}`}>
+                                <span className={radarPercentileClass(item.value)}>{item.value}</span>
+                                <p>{item.label}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="ulab-similar-item__balance-card">
+                          <h4>Balance por bloques</h4>
+                          <div className="ulab-similar-item__balance-grid">
+                            {s.blockBalance.map((group) => (
+                              <div className="ulab-similar-item__balance-row" key={`balance-${s.player.id}-${group.key}`}>
+                                <div>
+                                  <span>
+                                    <i className={group.className} />
+                                    {group.title}
+                                  </span>
+                                  <strong>{group.average}</strong>
+                                </div>
+                                <div className="ulab-similar-item__balance-track">
+                                  <span
+                                    className={radarPercentileClass(group.average)}
+                                    style={{ width: `${Math.max(4, group.average)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="ulab-similar-item__uv-card ulab-similar-item__uv-card--full">
+                          <span>Union Value</span>
+                          <strong>{sUV}</strong>
+                          <small>Similitud {s.similarity}%</small>
+                        </div>
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
             </ul>
           )}
+        </div>
+      ) : null}
+
+      {/* Ranking individual del jugador en el equipo */}
+      {ulabMode === "ranking" && playerRankings.length > 0 ? (
+        <div className="ulab-player-rankings">
+          <p className="ulab-player-rankings__title">Posición en el equipo</p>
+          <div className="ulab-player-rankings__grid">
+            {playerRankings.map(({ metric, value, rank, total }) => {
+              const rankClass =
+                rank === 1 ? "ulab-player-rankings__rank--top1"
+                : rank <= 3 ? "ulab-player-rankings__rank--top3"
+                : rank <= 5 ? "ulab-player-rankings__rank--top5"
+                : "ulab-player-rankings__rank--other";
+              const isPos = metric.isEfficiency && value > 0;
+              const isNeg = metric.isEfficiency && value < 0;
+              const sign = isPos ? "+" : "";
+              const displayVal = `${sign}${value.toFixed(metric.decimals)}${metric.unit ?? ""}`;
+              const valColor = isPos ? "#16813a" : isNeg ? "#d9480f" : undefined;
+              return (
+                <div key={metric.key} className="ulab-player-rankings__row">
+                  <span className="ulab-player-rankings__label">{metric.label}</span>
+                  <span className={`ulab-player-rankings__rank ${rankClass}`}>
+                    {rank}º/{total}
+                  </span>
+                  <span className="ulab-player-rankings__val" style={{ color: valColor }}>
+                    {displayVal}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </aside>
@@ -1116,6 +1572,15 @@ function formatUpdatedAt(dateStr: string | null | undefined): string {
   }
 }
 
+function formatRangeSummary(min: number, max: number, suffix = "") {
+  return `${min}${suffix} - ${max}${suffix}`;
+}
+
+function rangePercent(value: number, min: number, max: number) {
+  if (max <= min) return 0;
+  return ((value - min) / (max - min)) * 100;
+}
+
 function RankingsSection({
   players,
   updatedAt,
@@ -1123,15 +1588,231 @@ function RankingsSection({
   players: ObjectivePlayer[];
   updatedAt: string | null;
 }) {
+  const [isPositionFilterOpen, setIsPositionFilterOpen] = useState(false);
+  const [selectedLines, setSelectedLines] = useState<PositionLine[]>(() => [...LINE_ORDER]);
+  const minutePctValues = useMemo(
+    () =>
+      players
+        .map((player) => extractStats(player).minutesPct)
+        .filter((value) => Number.isFinite(value)),
+    [players],
+  );
+  const ages = useMemo(
+    () =>
+      players
+        .map((player) => (player.birth_year ? new Date().getFullYear() - player.birth_year : null))
+        .filter((value): value is number => value !== null && Number.isFinite(value)),
+    [players],
+  );
+  const minutePctBounds = useMemo(() => {
+    if (!minutePctValues.length) return { min: 0, max: 100 };
+    return {
+      min: Math.min(...minutePctValues),
+      max: Math.max(...minutePctValues),
+    };
+  }, [minutePctValues]);
+  const ageBounds = useMemo(() => {
+    if (!ages.length) return { min: 16, max: 40 };
+    return {
+      min: Math.min(...ages),
+      max: Math.max(...ages),
+    };
+  }, [ages]);
+  const [minMinutesPct, setMinMinutesPct] = useState(0);
+  const [maxMinutesPct, setMaxMinutesPct] = useState(100);
+  const [minAge, setMinAge] = useState(16);
+  const [maxAge, setMaxAge] = useState(40);
+
+  useEffect(() => {
+    setMinMinutesPct(minutePctBounds.min);
+    setMaxMinutesPct(minutePctBounds.max);
+  }, [minutePctBounds.max, minutePctBounds.min]);
+
+  useEffect(() => {
+    setMinAge(ageBounds.min);
+    setMaxAge(ageBounds.max);
+  }, [ageBounds.max, ageBounds.min]);
+
+  const filteredPlayers = useMemo(
+    () =>
+      players.filter((player) => {
+        const minutesPct = extractStats(player).minutesPct;
+        const line = positionLine(player.primary_position || player.primary_position_label);
+        const age = player.birth_year ? new Date().getFullYear() - player.birth_year : null;
+        const matchesLine = selectedLines.includes(line);
+        const matchesMinutes = minutesPct >= minMinutesPct && minutesPct <= maxMinutesPct;
+        const matchesAge = age === null ? false : age >= minAge && age <= maxAge;
+        return matchesLine && matchesMinutes && matchesAge;
+      }),
+    [maxAge, maxMinutesPct, minAge, minMinutesPct, players, selectedLines],
+  );
+
+  const selectedMinuteRange =
+    minutePctBounds.max > minutePctBounds.min
+      ? ((maxMinutesPct - minMinutesPct) / (minutePctBounds.max - minutePctBounds.min)) * 100
+      : 0;
+  const selectedAgeRange =
+    ageBounds.max > ageBounds.min
+      ? ((maxAge - minAge) / (ageBounds.max - ageBounds.min)) * 100
+      : 0;
+  const selectedPositionSummary =
+    selectedLines.length === LINE_ORDER.length
+      ? "Todas las posiciones"
+      : selectedLines.length === 0
+        ? "Sin posiciones seleccionadas"
+        : selectedLines.map((line) => LINE_LABEL[line]).join(" · ");
+  const minAgePercent = rangePercent(minAge, ageBounds.min, ageBounds.max);
+  const maxAgePercent = rangePercent(maxAge, ageBounds.min, ageBounds.max);
+  const minMinutePercent = rangePercent(minMinutesPct, minutePctBounds.min, minutePctBounds.max);
+  const maxMinutePercent = rangePercent(maxMinutesPct, minutePctBounds.min, minutePctBounds.max);
+
+  function toggleLine(line: PositionLine) {
+    setSelectedLines((current) =>
+      current.includes(line) ? current.filter((item) => item !== line) : [...current, line],
+    );
+  }
+
   return (
     <div className="ulab-rankings">
       <div className="ulab-rankings__head">
         <h3 className="ulab-rankings__title">Rankings de plantilla</h3>
         {updatedAt ? <span className="ulab-rankings__date">{formatUpdatedAt(updatedAt)}</span> : null}
       </div>
+      <div className="ulab-rankings__filters">
+        <div className="ulab-rankings__filter-card ulab-rankings__filter-card--positions">
+          <div className="ulab-rankings__filter-head">
+            <strong>
+              <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
+              Posición general
+            </strong>
+          </div>
+          <div className="ulab-rankings__multiselect">
+            <button
+              className={`ulab-rankings__multiselect-trigger${isPositionFilterOpen ? " is-open" : ""}`}
+              onClick={() => setIsPositionFilterOpen((value) => !value)}
+              type="button"
+            >
+              <span>{selectedLines.length}/{LINE_ORDER.length} seleccionadas</span>
+              <strong>{isPositionFilterOpen ? "Cerrar" : "Elegir"}</strong>
+            </button>
+            {isPositionFilterOpen ? (
+              <div className="ulab-rankings__multiselect-menu">
+                {LINE_ORDER.map((line) => (
+                  <label key={line} className="ulab-rankings__multiselect-option">
+                    <input
+                      checked={selectedLines.includes(line)}
+                      onChange={() => toggleLine(line)}
+                      type="checkbox"
+                    />
+                    <span className="ulab-rankings__multiselect-swatch" style={{ background: LINE_COLOR[line] }} />
+                    <span>{LINE_LABEL[line]}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="ulab-rankings__filter-card">
+          <div className="ulab-rankings__filter-head">
+            <strong>
+              <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
+              Edad
+            </strong>
+          </div>
+          <div className="ulab-rankings__range-wrap">
+            <div className="ulab-rankings__range-track" />
+            <div className="ulab-rankings__range-values">
+              <span className="ulab-rankings__range-value" style={{ left: `${minAgePercent}%` }}>
+                {minAge}
+              </span>
+              <span className="ulab-rankings__range-value" style={{ left: `${maxAgePercent}%` }}>
+                {maxAge}
+              </span>
+            </div>
+            <div
+              className="ulab-rankings__range-active"
+              style={{
+                left: `${minAgePercent}%`,
+                width: `${selectedAgeRange}%`,
+              }}
+            />
+            <input
+              className="ulab-rankings__range ulab-rankings__range--min"
+              max={Math.max(ageBounds.min, maxAge)}
+              min={ageBounds.min}
+              onChange={(event) => setMinAge(Math.min(Number(event.target.value), maxAge))}
+              step={1}
+              type="range"
+              value={minAge}
+            />
+            <input
+              className="ulab-rankings__range ulab-rankings__range--max"
+              max={ageBounds.max}
+              min={Math.min(minAge, ageBounds.max)}
+              onChange={(event) => setMaxAge(Math.max(Number(event.target.value), minAge))}
+              step={1}
+              type="range"
+              value={maxAge}
+            />
+          </div>
+        </div>
+        <div className="ulab-rankings__filter-card">
+          <div className="ulab-rankings__filter-head">
+            <strong>
+              <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
+              % minutos disputados
+            </strong>
+          </div>
+          <div className="ulab-rankings__range-wrap">
+            <div className="ulab-rankings__range-track" />
+            <div className="ulab-rankings__range-values">
+              <span className="ulab-rankings__range-value" style={{ left: `${minMinutePercent}%` }}>
+                {minMinutesPct}%
+              </span>
+              <span className="ulab-rankings__range-value" style={{ left: `${maxMinutePercent}%` }}>
+                {maxMinutesPct}%
+              </span>
+            </div>
+            <div
+              className="ulab-rankings__range-active"
+              style={{
+                left: `${minMinutePercent}%`,
+                width: `${selectedMinuteRange}%`,
+              }}
+            />
+            <input
+              className="ulab-rankings__range ulab-rankings__range--min"
+              max={Math.max(minutePctBounds.min, maxMinutesPct)}
+              min={minutePctBounds.min}
+              onChange={(event) =>
+                setMinMinutesPct(Math.min(Number(event.target.value), maxMinutesPct))
+              }
+              step={1}
+              type="range"
+              value={minMinutesPct}
+            />
+            <input
+              className="ulab-rankings__range ulab-rankings__range--max"
+              max={minutePctBounds.max}
+              min={Math.min(minMinutesPct, minutePctBounds.max)}
+              onChange={(event) =>
+                setMaxMinutesPct(Math.max(Number(event.target.value), minMinutesPct))
+              }
+              step={1}
+              type="range"
+              value={maxMinutesPct}
+            />
+          </div>
+        </div>
+      </div>
+      {filteredPlayers.length === 0 ? (
+        <div className="ulab-rankings__empty">
+          Ningún jugador entra en los filtros seleccionados.
+        </div>
+      ) : null}
       <div className="ulab-rankings-grid">
         {METRICS_CONFIG.map((metric) => {
-          const rows = players
+          const rows = filteredPlayers
             .map((p) => {
               const mObj = (p.metrics as Record<string, unknown>) || {};
               const val = metric.getValue(mObj);
@@ -1203,6 +1884,11 @@ interface ScatterPoint {
   y: number;
 }
 
+interface ScatterSelectedRow extends ScatterPoint {
+  cx: number;
+  cy: number;
+}
+
 interface ScatterTooltip {
   svgX: number;
   svgY: number;
@@ -1211,17 +1897,34 @@ interface ScatterTooltip {
   yVal: number;
 }
 
-const SCATTER_PAD = { top: 32, right: 24, bottom: 48, left: 52 };
-const SCATTER_W = 600;
-const SCATTER_H = 420;
+const SCATTER_PAD = { top: 28, right: 20, bottom: 44, left: 50 };
+const SCATTER_W = 820;
+const SCATTER_H = 460;
 const PLOT_W = SCATTER_W - SCATTER_PAD.left - SCATTER_PAD.right;
 const PLOT_H = SCATTER_H - SCATTER_PAD.top - SCATTER_PAD.bottom;
+
+/** Jitter determinista basado en el ID del jugador — evita que los puntos
+ *  se solapen sin cambiar entre renders */
+function deterministicJitter(id: string, range: number): [number, number] {
+  let h = 5381;
+  for (let i = 0; i < id.length; i++) {
+    h = (((h << 5) + h) ^ id.charCodeAt(i)) & 0x7fffffff;
+  }
+  const h2 = ((h * 1664525 + 1013904223) & 0x7fffffff);
+  const dx = ((h & 0xff) / 255 - 0.5) * 2 * range;
+  const dy = ((h2 & 0xff) / 255 - 0.5) * 2 * range;
+  return [dx, dy];
+}
 
 function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
   // Blank initial state — user must choose both axes
   const [xKey, setXKey] = useState<string | null>(null);
   const [yKey, setYKey] = useState<string | null>(null);
+  const [filterZero, setFilterZero] = useState(false);
   const [tooltip, setTooltip] = useState<ScatterTooltip | null>(null);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
+  const [focusedPlayerId, setFocusedPlayerId] = useState<string | null>(null);
+  const [visibleLines, setVisibleLines] = useState<PositionLine[]>(() => [...LINE_ORDER]);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const xConfig = xKey ? METRICS_CONFIG.find((m) => m.key === xKey) ?? null : null;
@@ -1235,11 +1938,14 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
         const mObj = (p.metrics as Record<string, unknown>) || {};
         const x = xConfig.getValue(mObj);
         const y = yConfig.getValue(mObj);
+        const line = positionLine(p.primary_position || p.primary_position_label);
         if (x === null || y === null) return null;
+        if (filterZero && (x === 0 || y === 0)) return null;
+        if (!visibleLines.includes(line)) return null;
         return { player: p, x, y };
       })
       .filter((d): d is ScatterPoint => d !== null);
-  }, [players, xConfig, yConfig]);
+  }, [players, xConfig, yConfig, filterZero, visibleLines]);
 
   const xs = plotData.map((d) => d.x);
   const ys = plotData.map((d) => d.y);
@@ -1273,6 +1979,46 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
   const yTicks = ready ? niceSteps(yLo, yHi) : [];
   const meanSvgX = ready ? toSvgX(xMean) : 0;
   const meanSvgY = ready ? toSvgY(yMean) : 0;
+  const selectedRows = useMemo<ScatterSelectedRow[]>(() => {
+    if (!ready) return [];
+    const selectedSet = new Set(selectedPlayerIds);
+    return plotData
+      .filter((d) => selectedSet.has(d.player.id))
+      .map((d) => {
+        const [jx, jy] = deterministicJitter(d.player.id, 6);
+        return {
+          ...d,
+          cx: toSvgX(d.x) + jx,
+          cy: toSvgY(d.y) + jy,
+        };
+      });
+  }, [plotData, ready, selectedPlayerIds]);
+  const focusedRow = selectedRows.find((row) => row.player.id === focusedPlayerId) || null;
+
+  useEffect(() => {
+    const availableIds = new Set(plotData.map((row) => row.player.id));
+    setSelectedPlayerIds((current) => current.filter((id) => availableIds.has(id)));
+    setFocusedPlayerId((current) => (current && availableIds.has(current) ? current : null));
+  }, [plotData]);
+
+  function swapAxes() {
+    setXKey(yKey);
+    setYKey(xKey);
+    setTooltip(null);
+  }
+
+  function toggleSelectedPlayer(playerId: string) {
+    setSelectedPlayerIds((current) =>
+      current.includes(playerId) ? current.filter((id) => id !== playerId) : [...current, playerId],
+    );
+    setFocusedPlayerId(playerId);
+  }
+
+  function toggleVisibleLine(line: PositionLine) {
+    setVisibleLines((current) =>
+      current.includes(line) ? current.filter((item) => item !== line) : [...current, line],
+    );
+  }
 
   return (
     <div className="ulab-scatter">
@@ -1302,6 +2048,22 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                 {METRICS_CONFIG.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
               </select>
             </label>
+            <button
+              type="button"
+              className="ulab-scatter__swap-btn"
+              disabled={!xConfig || !yConfig}
+              onClick={swapAxes}
+            >
+              Intercambiar ejes
+            </button>
+            <label className="ulab-scatter__zero-filter">
+              <input
+                type="checkbox"
+                checked={filterZero}
+                onChange={(e) => { setFilterZero(e.target.checked); setTooltip(null); }}
+              />
+              <span>Ocultar valor cero</span>
+            </label>
           </div>
         </div>
 
@@ -1313,23 +2075,75 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
               <p>Selecciona las métricas para los ejes X e Y<br />y visualiza la distribución de la plantilla</p>
             </div>
           ) : (
-            <div className="ulab-scatter__wrap" onMouseLeave={() => setTooltip(null)}>
-              <svg
-                ref={svgRef}
-                viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`}
-                className="ulab-scatter__svg"
-                aria-label="Scatter de plantilla"
-              >
+            <div className="ulab-scatter__layout">
+              <aside className="ulab-scatter__sidebar">
+                <div className="ulab-scatter__selection-head">
+                  <strong>Jugadores seleccionados</strong>
+                  <span>
+                    {selectedRows.length
+                      ? `${selectedRows.length} marcados en el gráfico`
+                      : "Haz clic en un punto para añadirlo"}
+                  </span>
+                </div>
+                {selectedRows.length ? (
+                  <div className="ulab-scatter__selection-table">
+                    <div className="ulab-scatter__selection-row ulab-scatter__selection-row--head">
+                      <span>Jugador</span>
+                      <span>{xConfig?.short}</span>
+                      <span>{yConfig?.short}</span>
+                      <span>Ubicación</span>
+                    </div>
+                    {selectedRows.map((row) => (
+                      <button
+                        key={row.player.id}
+                        type="button"
+                        className={`ulab-scatter__selection-row${focusedPlayerId === row.player.id ? " is-focused" : ""}`}
+                        onClick={() => {
+                          setFocusedPlayerId(row.player.id);
+                          setTooltip({
+                            svgX: row.cx,
+                            svgY: row.cy,
+                            player: row.player,
+                            xVal: row.x,
+                            yVal: row.y,
+                          });
+                        }}
+                      >
+                        <span>{playerShortName(row.player)}</span>
+                        <span>{row.x.toFixed(xConfig?.decimals ?? 0)}{xConfig?.unit ?? ""}</span>
+                        <span>{row.y.toFixed(yConfig?.decimals ?? 0)}{yConfig?.unit ?? ""}</span>
+                        <span>{focusedPlayerId === row.player.id ? "▲ En foco" : "Ver en gráfico"}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="ulab-scatter__selection-empty">
+                    Selecciona jugadores desde el gráfico para ver sus valores aquí.
+                  </div>
+                )}
+              </aside>
+
+              <div className="ulab-scatter__main">
+                <div className="ulab-scatter__wrap" onMouseLeave={() => setTooltip(null)}>
+                  <div className="ulab-scatter__watermark" aria-hidden="true">
+                    <img src="/escudo/unionistar.png" alt="" />
+                  </div>
+                  <svg
+                    ref={svgRef}
+                    viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`}
+                    className="ulab-scatter__svg"
+                    aria-label="Scatter de plantilla"
+                  >
                 {/* Axes */}
                 <line
                   x1={SCATTER_PAD.left} y1={SCATTER_PAD.top}
                   x2={SCATTER_PAD.left} y2={SCATTER_PAD.top + PLOT_H}
-                  stroke="#2a2a2a" strokeWidth={1}
+                  stroke="rgba(224, 210, 0, 0.38)" strokeWidth={1.1}
                 />
                 <line
                   x1={SCATTER_PAD.left} y1={SCATTER_PAD.top + PLOT_H}
                   x2={SCATTER_PAD.left + PLOT_W} y2={SCATTER_PAD.top + PLOT_H}
-                  stroke="#2a2a2a" strokeWidth={1}
+                  stroke="rgba(224, 210, 0, 0.38)" strokeWidth={1.1}
                 />
 
                 {/* X axis ticks + labels */}
@@ -1338,8 +2152,8 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                   if (sx < SCATTER_PAD.left - 2 || sx > SCATTER_PAD.left + PLOT_W + 2) return null;
                   return (
                     <g key={`xt-${t}`}>
-                      <line x1={sx} y1={SCATTER_PAD.top + PLOT_H} x2={sx} y2={SCATTER_PAD.top + PLOT_H + 4} stroke="#333" strokeWidth={1} />
-                      <text x={sx} y={SCATTER_PAD.top + PLOT_H + 16} textAnchor="middle" fontSize={10} fill="#555">
+                      <line x1={sx} y1={SCATTER_PAD.top + PLOT_H} x2={sx} y2={SCATTER_PAD.top + PLOT_H + 4} stroke="rgba(224, 210, 0, 0.42)" strokeWidth={1} />
+                      <text x={sx} y={SCATTER_PAD.top + PLOT_H + 16} textAnchor="middle" fontSize={10} fill="rgba(224, 210, 0, 0.62)">
                         {t.toFixed(xConfig!.decimals <= 1 ? 0 : 1)}{xConfig!.unit ?? ""}
                       </text>
                     </g>
@@ -1352,8 +2166,8 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                   if (sy < SCATTER_PAD.top - 2 || sy > SCATTER_PAD.top + PLOT_H + 2) return null;
                   return (
                     <g key={`yt-${t}`}>
-                      <line x1={SCATTER_PAD.left - 4} y1={sy} x2={SCATTER_PAD.left} y2={sy} stroke="#333" strokeWidth={1} />
-                      <text x={SCATTER_PAD.left - 7} y={sy} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="#555">
+                      <line x1={SCATTER_PAD.left - 4} y1={sy} x2={SCATTER_PAD.left} y2={sy} stroke="rgba(224, 210, 0, 0.42)" strokeWidth={1} />
+                      <text x={SCATTER_PAD.left - 7} y={sy} textAnchor="end" dominantBaseline="middle" fontSize={10} fill="rgba(224, 210, 0, 0.62)">
                         {t.toFixed(yConfig!.decimals <= 1 ? 0 : 1)}{yConfig!.unit ?? ""}
                       </text>
                     </g>
@@ -1364,14 +2178,14 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                 <text
                   x={SCATTER_PAD.left + PLOT_W / 2}
                   y={SCATTER_H - 2}
-                  textAnchor="middle" fontSize={11} fill="#666" fontWeight={600}
+                  textAnchor="middle" fontSize={11} fill="rgba(224, 210, 0, 0.72)" fontWeight={700}
                 >
                   {xConfig!.label}
                 </text>
                 <text
                   x={13}
                   y={SCATTER_PAD.top + PLOT_H / 2}
-                  textAnchor="middle" fontSize={11} fill="#666" fontWeight={600}
+                  textAnchor="middle" fontSize={11} fill="rgba(224, 210, 0, 0.72)" fontWeight={700}
                   transform={`rotate(-90, 13, ${SCATTER_PAD.top + PLOT_H / 2})`}
                 >
                   {yConfig!.label}
@@ -1381,20 +2195,23 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                 <line
                   x1={meanSvgX} y1={SCATTER_PAD.top}
                   x2={meanSvgX} y2={SCATTER_PAD.top + PLOT_H}
-                  stroke="#3a3a3a" strokeWidth={1.5} strokeDasharray="6 4"
+                  stroke="rgba(224, 210, 0, 0.55)" strokeWidth={1.6} strokeDasharray="6 4"
                 />
                 <line
                   x1={SCATTER_PAD.left} y1={meanSvgY}
                   x2={SCATTER_PAD.left + PLOT_W} y2={meanSvgY}
-                  stroke="#3a3a3a" strokeWidth={1.5} strokeDasharray="6 4"
+                  stroke="rgba(224, 210, 0, 0.55)" strokeWidth={1.6} strokeDasharray="6 4"
                 />
-                <text x={meanSvgX + 5} y={SCATTER_PAD.top + 12} fontSize={9} fill="#444">media</text>
-                <text x={SCATTER_PAD.left + 5} y={meanSvgY - 5} fontSize={9} fill="#444">media</text>
+                <text x={meanSvgX + 5} y={SCATTER_PAD.top + 12} fontSize={9} fill="rgba(224, 210, 0, 0.58)">media</text>
+                <text x={SCATTER_PAD.left + 5} y={meanSvgY - 5} fontSize={9} fill="rgba(224, 210, 0, 0.58)">media</text>
 
-                {/* Dots */}
+                {/* Dots — con jitter determinista para separar puntos solapados */}
                 {plotData.map((d) => {
-                  const cx = toSvgX(d.x);
-                  const cy = toSvgY(d.y);
+                  const baseCx = toSvgX(d.x);
+                  const baseCy = toSvgY(d.y);
+                  const [jx, jy] = deterministicJitter(d.player.id, 6);
+                  const cx = baseCx + jx;
+                  const cy = baseCy + jy;
                   const ln = positionLine(d.player.primary_position || d.player.primary_position_label);
                   const dotColor = LINE_COLOR[ln];
                   const isActive = tooltip?.player.id === d.player.id;
@@ -1403,15 +2220,16 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                       key={d.player.id}
                       style={{ cursor: "pointer" }}
                       onMouseEnter={() => setTooltip({ svgX: cx, svgY: cy, player: d.player, xVal: d.x, yVal: d.y })}
+                      onClick={() => toggleSelectedPlayer(d.player.id)}
                     >
                       <circle
-                        cx={cx} cy={cy} r={isActive ? 10 : 7}
+                        cx={cx} cy={cy} r={isActive ? 9 : 6}
                         fill={dotColor} fillOpacity={isActive ? 1 : 0.85}
                         stroke={isActive ? "#fff" : "#0d0d0d"} strokeWidth={isActive ? 2 : 1.5}
                       />
                       <text
-                        x={cx} y={cy - 12}
-                        textAnchor="middle" fontSize={9} fill="#ccc"
+                        x={cx} y={cy - 10}
+                        textAnchor="middle" fontSize={8.5} fill="#bbb"
                         paintOrder="stroke" stroke="#0d0d0d" strokeWidth={2.5}
                       >
                         {playerShortName(d.player)}
@@ -1419,36 +2237,103 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                     </g>
                   );
                 })}
-              </svg>
 
-              {/* Leyenda */}
-              <div className="ulab-scatter__legend">
-                {(Object.entries(LINE_COLOR) as [PositionLine, string][]).map(([ln, color]) => (
-                  <span key={ln} className="ulab-scatter__legend-item">
-                    <i style={{ background: color }} />
-                    {LINE_LABEL[ln]}
-                  </span>
-                ))}
-                <span className="ulab-scatter__legend-item ulab-scatter__legend-item--mean">
-                  <i />
-                  Media equipo
-                </span>
-              </div>
+                {focusedRow ? (
+                  <g className="ulab-scatter__focus-marker">
+                    <line
+                      x1={focusedRow.cx}
+                      y1={SCATTER_PAD.top}
+                      x2={focusedRow.cx}
+                      y2={SCATTER_PAD.top + PLOT_H}
+                      stroke="#f2e400"
+                      strokeDasharray="4 4"
+                      strokeOpacity="0.35"
+                      strokeWidth={1.5}
+                    />
+                    <line
+                      x1={SCATTER_PAD.left}
+                      y1={focusedRow.cy}
+                      x2={SCATTER_PAD.left + PLOT_W}
+                      y2={focusedRow.cy}
+                      stroke="#f2e400"
+                      strokeDasharray="4 4"
+                      strokeOpacity="0.35"
+                      strokeWidth={1.5}
+                    />
+                    <line
+                      x1={focusedRow.cx}
+                      y1={focusedRow.cy - 28}
+                      x2={focusedRow.cx}
+                      y2={focusedRow.cy - 10}
+                      stroke="#f2e400"
+                      strokeWidth={2}
+                    />
+                    <path
+                      d={`M ${focusedRow.cx - 5} ${focusedRow.cy - 11} L ${focusedRow.cx} ${focusedRow.cy - 2} L ${focusedRow.cx + 5} ${focusedRow.cy - 11}`}
+                      fill="none"
+                      stroke="#f2e400"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <circle
+                      cx={focusedRow.cx}
+                      cy={focusedRow.cy}
+                      r={11}
+                      fill="none"
+                      stroke="#f2e400"
+                      strokeWidth={2.2}
+                      strokeDasharray="4 3"
+                    />
+                    <circle
+                      cx={focusedRow.cx}
+                      cy={focusedRow.cy}
+                      r={15}
+                      fill="none"
+                      stroke="#f2e400"
+                      strokeOpacity="0.25"
+                      strokeWidth={1.4}
+                    />
+                  </g>
+                ) : null}
+                  </svg>
 
-              {/* Tooltip flotante */}
-              {tooltip && xConfig && yConfig ? (
-                <div
-                  className="ulab-scatter__tooltip"
-                  style={{
-                    left: `calc(${(tooltip.svgX / SCATTER_W) * 100}% + 14px)`,
-                    top: `calc(${(tooltip.svgY / SCATTER_H) * 100}% - 24px)`,
-                  }}
-                >
-                  <strong>{playerShortName(tooltip.player)}</strong>
-                  <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
-                  <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
+                  {/* Leyenda */}
+                  <div className="ulab-scatter__legend">
+                    {(Object.entries(LINE_COLOR) as [PositionLine, string][]).map(([ln, color]) => (
+                      <button
+                        key={ln}
+                        type="button"
+                        className={`ulab-scatter__legend-item${visibleLines.includes(ln) ? " is-active" : ""}`}
+                        aria-pressed={visibleLines.includes(ln)}
+                        onClick={() => toggleVisibleLine(ln)}
+                      >
+                        <i style={{ background: color }} />
+                        {LINE_LABEL[ln]}
+                      </button>
+                    ))}
+                    <span className="ulab-scatter__legend-item ulab-scatter__legend-item--mean">
+                      <i />
+                      Media equipo
+                    </span>
+                  </div>
+
+                  {/* Tooltip flotante */}
+                  {tooltip && xConfig && yConfig ? (
+                    <div
+                      className="ulab-scatter__tooltip"
+                      style={{
+                        left: `calc(${(tooltip.svgX / SCATTER_W) * 100}% + 14px)`,
+                        top: `calc(${(tooltip.svgY / SCATTER_H) * 100}% - 24px)`,
+                      }}
+                    >
+                      <strong>{playerShortName(tooltip.player)}</strong>
+                      <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
+                      <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
+              </div>
             </div>
           )}
         </div>
@@ -1492,6 +2377,13 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
     [selectedId, unionistasPlayers],
   );
 
+  useEffect(() => {
+    if (!selectedId) return;
+    if (!unionistasPlayers.some((player) => player.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [selectedId, unionistasPlayers]);
+
   return (
     <section className="ulab-view">
       {/* Cabecera */}
@@ -1513,29 +2405,52 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
       <div className={`ulab-layout${selectedPlayer ? " ulab-layout--with-panel" : ""}`}>
         {/* Plantilla por líneas */}
         <div className="ulab-squad">
+          {unionistasPlayers.length === 0 ? (
+            <div className="content-card">
+              <div className="section-title">
+                <h2>Plantilla no disponible</h2>
+              </div>
+              <p>
+                No se han encontrado jugadores de Unionistas en `objective_players` para esta
+                temporada. Revisa la carga Wyscout o la lista de nombres usada por `ULab`.
+              </p>
+            </div>
+          ) : null}
           {LINE_ORDER.map((line) => {
             const group = byLine[line];
-            if (group.length === 0) return null;
+            if (!group.length) return null;
+
             return (
-              <div key={line} className="ulab-squad-group">
-                <div className="ulab-squad-group__label" style={{ color: LINE_COLOR[line] }}>
-                  <span style={{ background: LINE_COLOR[line] }} />
-                  {LINE_LABEL[line]}
-                  <em>{group.length}</em>
+              <section key={line} className="ulab-squad-row">
+                <div className="ulab-squad-row__header">
+                  <div
+                    className="ulab-squad-row__badge"
+                    style={{ background: LINE_COLOR[line] }}
+                  >
+                    <strong>{LINE_LABEL[line]}</strong>
+                    <em>{group.length}</em>
+                  </div>
                 </div>
-                <div className="ulab-squad-group__cards">
-                  {group.map((player) => (
-                    <SquadPlayerCard
-                      key={player.id}
-                      player={player}
-                      isSelected={selectedId === player.id}
-                      onSelect={() =>
-                        setSelectedId(selectedId === player.id ? null : player.id)
-                      }
-                    />
-                  ))}
+                <div className="ulab-squad-row__scroller">
+                  <div className="ulab-squad-row__track">
+                    {group.map((player) => (
+                      <div key={player.id} className="ulab-squad-row__card">
+                        <div
+                          className="ulab-squad-item__tone"
+                          style={{ background: LINE_COLOR[line] }}
+                        />
+                        <SquadPlayerCard
+                          player={player}
+                          isSelected={selectedId === player.id}
+                          onSelect={() =>
+                            setSelectedId(selectedId === player.id ? null : player.id)
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </section>
             );
           })}
         </div>
@@ -1545,6 +2460,7 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
           <PlayerDetailPanel
             player={selectedPlayer}
             allObjectivePlayers={objectivePlayers}
+            squadPlayers={unionistasPlayers}
             onClose={() => setSelectedId(null)}
           />
         ) : null}

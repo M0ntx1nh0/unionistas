@@ -30,6 +30,7 @@ export function LoginView() {
         <div className="brand-kicker">Área de Scouting</div>
         <h1>Unionistas Scouting Lab</h1>
         <p>Acceso privado al laboratorio de scouting, calendario operativo y campogramas.</p>
+        <div className="login-motto">#Irreductibles⚔️</div>
         <form onSubmit={handleSubmit} className="login-form">
           <label>
             Usuario
