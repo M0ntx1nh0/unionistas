@@ -357,22 +357,35 @@ def _build_best_radar_dataset(objective_df: pd.DataFrame, objective_player_id: A
     return specific_radar
 
 
-def _fetch_objective_player_ids(client, season_id: str) -> dict[tuple[str, str], str]:
+def _fetch_objective_player_ids(
+    client,
+    season_id: str,
+    player_payloads: list[dict[str, Any]],
+) -> dict[tuple[str, str], str]:
     mapping: dict[tuple[str, str], str] = {}
-    page_size = 1000
-    for start in range(0, 100000, page_size):
-        response = (
-            client.table("objective_players")
-            .select("id,objective_dataset,source_player_id")
-            .eq("season_id", season_id)
-            .range(start, start + page_size - 1)
-            .execute()
-        )
-        rows = response.data or []
-        for row in rows:
-            mapping[(str(row["objective_dataset"]), str(row["source_player_id"]))] = str(row["id"])
-        if len(rows) < page_size:
-            break
+    source_ids_by_dataset: dict[str, list[str]] = {}
+    for payload in player_payloads:
+        objective_dataset = _clean_text(payload.get("objective_dataset"))
+        source_player_id = _source_player_id(payload.get("source_player_id"))
+        if not objective_dataset or not source_player_id:
+            continue
+        source_ids_by_dataset.setdefault(objective_dataset, []).append(source_player_id)
+
+    for objective_dataset, source_ids in source_ids_by_dataset.items():
+        unique_source_ids = list(dict.fromkeys(source_ids))
+        for start in range(0, len(unique_source_ids), UPSERT_CHUNK_SIZE):
+            chunk_source_ids = unique_source_ids[start : start + UPSERT_CHUNK_SIZE]
+            response = (
+                client.table("objective_players")
+                .select("id,objective_dataset,source_player_id")
+                .eq("season_id", season_id)
+                .eq("objective_dataset", objective_dataset)
+                .in_("source_player_id", chunk_source_ids)
+                .execute()
+            )
+            rows = response.data or []
+            for row in rows:
+                mapping[(str(row["objective_dataset"]), str(row["source_player_id"]))] = str(row["id"])
     return mapping
 
 
@@ -485,7 +498,20 @@ def sync_objective_players(apply: bool, source: str) -> None:
             on_conflict="season_id,objective_dataset,source_player_id",
         ).execute()
 
-    objective_player_ids = _fetch_objective_player_ids(client, season_id)
+    objective_player_ids = _fetch_objective_player_ids(client, season_id, player_payloads)
+    missing_player_ids = sum(
+        1
+        for payload in player_payloads
+        if (
+            _clean_text(payload.get("objective_dataset")),
+            _source_player_id(payload.get("source_player_id")),
+        ) not in objective_player_ids
+    )
+    if missing_player_ids:
+        print(
+            f"- Aviso: no se recuperaron {missing_player_ids} IDs tras el upsert. "
+            "Los cruces de esos jugadores se omitiran en esta ejecucion."
+        )
     match_payloads = [
         payload
         for _, row in matches_df.iterrows()
