@@ -591,6 +591,23 @@ def _fetch_existing_objective_matches(
     return mapping
 
 
+def _touch_objective_dataset_sync(
+    client,
+    season_id: str,
+    datasets: set[str],
+    synced_at: str,
+) -> None:
+    for objective_dataset in sorted(datasets):
+        client.table("objective_players").update({"updated_at": synced_at}).eq("season_id", season_id).eq(
+            "objective_dataset",
+            objective_dataset,
+        ).execute()
+        client.table("objective_player_matches").update({"updated_at": synced_at}).eq(
+            "season_id",
+            season_id,
+        ).eq("objective_dataset", objective_dataset).execute()
+
+
 def sync_objective_players(apply: bool, source: str) -> None:
     objective_df = load_objective_players(source=source)  # type: ignore[arg-type]
     subjective_df = load_scouting_reports()
@@ -768,6 +785,16 @@ def sync_objective_players(apply: bool, source: str) -> None:
             chunk,
             on_conflict="season_id,objective_dataset,objective_player_id,normalized_scouting_player_name",
         ).execute()
+
+    touched_datasets = {
+        dataset
+        for dataset in (
+            _clean_text(payload.get("objective_dataset")) for payload in player_payloads
+        )
+        if dataset
+    }
+    if touched_datasets:
+        _touch_objective_dataset_sync(client, season_id, touched_datasets, synced_at)
 
     print("Sincronizacion completada")
     print(f"- Jugadores objetivos sincronizados: {len(player_payloads)}")
