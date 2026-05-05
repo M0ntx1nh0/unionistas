@@ -41,60 +41,6 @@ from src.scouting_app.objective_data import (  # noqa: E402
 SEASON_LABEL = "2025/26"
 UPSERT_CHUNK_SIZE = 400
 MIN_RADAR_SAMPLE_SIZE = 30
-PLAYER_COMPARE_FIELDS = (
-    "season_id",
-    "objective_dataset",
-    "source_player_id",
-    "name",
-    "full_name",
-    "normalized_full_name",
-    "birth_year",
-    "birth_date",
-    "birth_country_name",
-    "passport_country_names",
-    "image",
-    "current_team_name",
-    "normalized_current_team_name",
-    "domestic_competition_name",
-    "current_team_logo",
-    "current_team_color",
-    "last_club_name",
-    "normalized_last_club_name",
-    "contract_expires",
-    "market_value",
-    "on_loan",
-    "positions",
-    "primary_position",
-    "primary_position_label",
-    "secondary_position",
-    "secondary_position_label",
-    "third_position",
-    "third_position_label",
-    "foot",
-    "height",
-    "weight",
-    "metrics",
-    "raw_data",
-)
-MATCH_COMPARE_FIELDS = (
-    "season_id",
-    "objective_player_id",
-    "objective_dataset",
-    "scouting_player_name",
-    "normalized_scouting_player_name",
-    "scouting_birth_year",
-    "scouting_team",
-    "objective_full_name",
-    "objective_birth_year",
-    "objective_team",
-    "objective_last_club",
-    "name_similarity",
-    "team_similarity",
-    "birth_year_match",
-    "match_score",
-    "match_status",
-    "raw_data",
-)
 
 
 def _iso_now() -> str:
@@ -184,19 +130,6 @@ def _json_safe(value: Any) -> Any:
 
 def _json_safe_dict(row: pd.Series) -> dict[str, Any]:
     return {str(key): _json_safe(value) for key, value in row.to_dict().items()}
-
-
-def _comparison_value(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {str(key): _comparison_value(val) for key, val in sorted(value.items())}
-    if isinstance(value, list):
-        return [_comparison_value(item) for item in value]
-    return _json_safe(value)
-
-
-def _comparison_snapshot(payload: dict[str, Any], fields: tuple[str, ...]) -> str:
-    comparable = {field: _comparison_value(payload.get(field)) for field in fields}
-    return json.dumps(comparable, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
 
 def _get_supabase_client():
@@ -463,40 +396,6 @@ def _fetch_objective_player_ids(
     return mapping
 
 
-def _fetch_existing_objective_players(
-    client,
-    season_id: str,
-    player_payloads: list[dict[str, Any]],
-) -> dict[tuple[str, str], dict[str, Any]]:
-    mapping: dict[tuple[str, str], dict[str, Any]] = {}
-    source_ids_by_dataset: dict[str, list[str]] = {}
-    select_fields = ",".join(("id", *PLAYER_COMPARE_FIELDS))
-
-    for payload in player_payloads:
-        objective_dataset = _clean_text(payload.get("objective_dataset"))
-        source_player_id = _source_player_id(payload.get("source_player_id"))
-        if not objective_dataset or not source_player_id:
-            continue
-        source_ids_by_dataset.setdefault(objective_dataset, []).append(source_player_id)
-
-    for objective_dataset, source_ids in source_ids_by_dataset.items():
-        unique_source_ids = list(dict.fromkeys(source_ids))
-        for start in range(0, len(unique_source_ids), UPSERT_CHUNK_SIZE):
-            chunk_source_ids = unique_source_ids[start : start + UPSERT_CHUNK_SIZE]
-            response = (
-                client.table("objective_players")
-                .select(select_fields)
-                .eq("season_id", season_id)
-                .eq("objective_dataset", objective_dataset)
-                .in_("source_player_id", chunk_source_ids)
-                .execute()
-            )
-            rows = response.data or []
-            for row in rows:
-                mapping[(str(row["objective_dataset"]), str(row["source_player_id"]))] = row
-    return mapping
-
-
 def _match_status_order(status: str | None) -> int:
     return {"seguro": 0, "probable": 1, "dudoso": 2, "sin_match": 3}.get(status or "", 9)
 
@@ -540,57 +439,6 @@ def _objective_match_payload(
     }
 
 
-def _fetch_existing_objective_matches(
-    client,
-    season_id: str,
-    match_payloads: list[dict[str, Any]],
-) -> dict[tuple[str, str, str], dict[str, Any]]:
-    mapping: dict[tuple[str, str, str], dict[str, Any]] = {}
-    grouped_payloads: dict[str, list[dict[str, Any]]] = {}
-    select_fields = ",".join(MATCH_COMPARE_FIELDS)
-
-    for payload in match_payloads:
-        objective_dataset = _clean_text(payload.get("objective_dataset"))
-        if not objective_dataset:
-            continue
-        grouped_payloads.setdefault(objective_dataset, []).append(payload)
-
-    for objective_dataset, dataset_payloads in grouped_payloads.items():
-        for start in range(0, len(dataset_payloads), UPSERT_CHUNK_SIZE):
-            chunk_payloads = dataset_payloads[start : start + UPSERT_CHUNK_SIZE]
-            objective_player_ids = [
-                str(payload["objective_player_id"])
-                for payload in chunk_payloads
-                if payload.get("objective_player_id")
-            ]
-            normalized_names = [
-                str(payload["normalized_scouting_player_name"])
-                for payload in chunk_payloads
-                if payload.get("normalized_scouting_player_name")
-            ]
-            if not objective_player_ids or not normalized_names:
-                continue
-            response = (
-                client.table("objective_player_matches")
-                .select(select_fields)
-                .eq("season_id", season_id)
-                .eq("objective_dataset", objective_dataset)
-                .in_("objective_player_id", list(dict.fromkeys(objective_player_ids)))
-                .in_("normalized_scouting_player_name", list(dict.fromkeys(normalized_names)))
-                .execute()
-            )
-            rows = response.data or []
-            for row in rows:
-                mapping[
-                    (
-                        str(row["objective_dataset"]),
-                        str(row["objective_player_id"]),
-                        str(row["normalized_scouting_player_name"]),
-                    )
-                ] = row
-    return mapping
-
-
 def _touch_objective_dataset_sync(
     client,
     season_id: str,
@@ -606,6 +454,22 @@ def _touch_objective_dataset_sync(
             "season_id",
             season_id,
         ).eq("objective_dataset", objective_dataset).execute()
+
+
+def _replace_objective_dataset_snapshot(
+    client,
+    season_id: str,
+    datasets: set[str],
+) -> None:
+    for objective_dataset in sorted(datasets):
+        client.table("objective_player_matches").delete().eq("season_id", season_id).eq(
+            "objective_dataset",
+            objective_dataset,
+        ).execute()
+        client.table("objective_players").delete().eq("season_id", season_id).eq(
+            "objective_dataset",
+            objective_dataset,
+        ).execute()
 
 
 def sync_objective_players(apply: bool, source: str) -> None:
@@ -672,47 +536,34 @@ def sync_objective_players(apply: bool, source: str) -> None:
     if duplicated_players:
         print(f"- Jugadores objetivos duplicados omitidos: {duplicated_players}")
 
-    existing_players = _fetch_existing_objective_players(client, season_id, player_payloads)
-    player_payloads_to_upsert: list[dict[str, Any]] = []
-    player_counts = {"new": 0, "updated": 0, "unchanged": 0}
-    objective_player_ids = {
-        key: str(row["id"])
-        for key, row in existing_players.items()
-        if row.get("id") is not None
-    }
-    for payload in player_payloads:
-        key = (
-            str(payload["objective_dataset"]),
-            str(payload["source_player_id"]),
+    replaced_datasets = {
+        dataset
+        for dataset in (
+            _clean_text(payload.get("objective_dataset")) for payload in player_payloads
         )
-        existing_row = existing_players.get(key)
-        if existing_row is None:
-            player_counts["new"] += 1
-            player_payloads_to_upsert.append(payload)
-            continue
-        if _comparison_snapshot(existing_row, PLAYER_COMPARE_FIELDS) != _comparison_snapshot(
-            payload,
-            PLAYER_COMPARE_FIELDS,
-        ):
-            player_counts["updated"] += 1
-            player_payloads_to_upsert.append(payload)
-            continue
-        player_counts["unchanged"] += 1
+        if dataset
+    }
+    if replaced_datasets:
+        print(
+            "- Estrategia Wyscout: reemplazo completo del snapshot por dataset/temporada "
+            "(sin duplicados, recalculando cruces)."
+        )
+        _replace_objective_dataset_snapshot(client, season_id, replaced_datasets)
 
     print(
         "- Jugadores objetivos:\n"
-        f"  · nuevos: {player_counts['new']}\n"
-        f"  · actualizados: {player_counts['updated']}\n"
-        f"  · sin cambios: {player_counts['unchanged']}"
+        f"  · nuevos: {len(player_payloads)}\n"
+        "  · actualizados: 0\n"
+        "  · sin cambios: 0"
     )
 
-    for chunk in _chunked(player_payloads_to_upsert):
+    for chunk in _chunked(player_payloads):
         client.table("objective_players").upsert(
             chunk,
             on_conflict="season_id,objective_dataset,source_player_id",
         ).execute()
 
-    objective_player_ids.update(_fetch_objective_player_ids(client, season_id, player_payloads_to_upsert))
+    objective_player_ids = _fetch_objective_player_ids(client, season_id, player_payloads)
     missing_player_ids = sum(
         1
         for payload in player_payloads
@@ -738,31 +589,8 @@ def sync_objective_players(apply: bool, source: str) -> None:
             )
         ) is not None
     ]
-    existing_matches = _fetch_existing_objective_matches(client, season_id, match_payloads)
-    match_payloads_to_upsert: list[dict[str, Any]] = []
-    match_counts = {"new": 0, "updated": 0, "unchanged": 0}
-    for payload in match_payloads:
-        key = (
-            str(payload["objective_dataset"]),
-            str(payload["objective_player_id"]),
-            str(payload["normalized_scouting_player_name"]),
-        )
-        existing_row = existing_matches.get(key)
-        if existing_row is None:
-            match_counts["new"] += 1
-            match_payloads_to_upsert.append(payload)
-            continue
-        if _comparison_snapshot(existing_row, MATCH_COMPARE_FIELDS) != _comparison_snapshot(
-            payload,
-            MATCH_COMPARE_FIELDS,
-        ):
-            match_counts["updated"] += 1
-            match_payloads_to_upsert.append(payload)
-            continue
-        match_counts["unchanged"] += 1
-
     match_payloads, duplicated_matches = _dedupe_payloads(
-        match_payloads_to_upsert,
+        match_payloads,
         (
             "season_id",
             "objective_dataset",
@@ -775,9 +603,9 @@ def sync_objective_players(apply: bool, source: str) -> None:
 
     print(
         "- Cruces objetivo-subjetivo:\n"
-        f"  · nuevos: {match_counts['new']}\n"
-        f"  · actualizados: {match_counts['updated']}\n"
-        f"  · sin cambios: {match_counts['unchanged']}"
+        f"  · nuevos: {len(match_payloads)}\n"
+        "  · actualizados: 0\n"
+        "  · sin cambios: 0"
     )
 
     for chunk in _chunked(match_payloads):
@@ -786,15 +614,8 @@ def sync_objective_players(apply: bool, source: str) -> None:
             on_conflict="season_id,objective_dataset,objective_player_id,normalized_scouting_player_name",
         ).execute()
 
-    touched_datasets = {
-        dataset
-        for dataset in (
-            _clean_text(payload.get("objective_dataset")) for payload in player_payloads
-        )
-        if dataset
-    }
-    if touched_datasets:
-        _touch_objective_dataset_sync(client, season_id, touched_datasets, synced_at)
+    if replaced_datasets:
+        _touch_objective_dataset_sync(client, season_id, replaced_datasets, synced_at)
 
     print("Sincronizacion completada")
     print(f"- Jugadores objetivos sincronizados: {len(player_payloads)}")
