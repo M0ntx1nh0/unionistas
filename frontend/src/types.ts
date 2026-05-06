@@ -7,6 +7,26 @@ export type UserProfile = {
   active: boolean;
 };
 
+export type SyncJobStatus = "queued" | "running" | "success" | "error" | "canceled";
+
+export type SyncJob = {
+  id: string;
+  target: "reports" | "campograms" | "calendar" | "wyscout" | "all";
+  dry_run: boolean;
+  status: SyncJobStatus;
+  progress_pct: number;
+  current_step: string | null;
+  created_by: string | null;
+  created_by_email: string | null;
+  github_run_id: number | null;
+  github_run_url: string | null;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Season = {
   id: string;
   label: string;
@@ -32,6 +52,7 @@ export type CalendarMatch = {
   venue: string | null;
   city: string | null;
   slug: string | null;
+  raw_data: Record<string, unknown> | null;
 };
 
 export type DashboardCounts = {

@@ -13,6 +13,8 @@ import type {
   PlayerSummary,
   ScoutingReport,
   Season,
+  SyncJob,
+  SyncJobStatus,
   UserProfile,
 } from "./types";
 import { CalendarView } from "./views/CalendarView";
@@ -27,6 +29,7 @@ type SyncTarget = "reports" | "campograms" | "calendar" | "wyscout" | "all";
 
 const SESSION_CLOSE_TIMEOUT_MS = 2 * 60 * 1000;
 const SESSION_LAST_ACTIVE_KEY = "unionistas:last-active-at";
+const SYNC_JOB_STORAGE_PREFIX = "unionistas:sync-job:";
 
 const SYNC_TARGETS: Array<{ value: SyncTarget; label: string; hint: string }> = [
   {
@@ -55,6 +58,26 @@ const SYNC_TARGETS: Array<{ value: SyncTarget; label: string; hint: string }> = 
     hint: "Ejecuta todas las sincronizaciones.",
   },
 ];
+
+const SYNC_STATUS_LABEL: Record<SyncJobStatus, string> = {
+  queued: "En cola",
+  running: "En curso",
+  success: "Completada",
+  error: "Error",
+  canceled: "Cancelada",
+};
+
+function syncJobStorageKey(profileId: string) {
+  return `${SYNC_JOB_STORAGE_PREFIX}${profileId}`;
+}
+
+function isSyncJobActive(job: SyncJob | null) {
+  return job ? job.status === "queued" || job.status === "running" : false;
+}
+
+function formatSyncJobTarget(target: SyncTarget) {
+  return SYNC_TARGETS.find((option) => option.value === target)?.label || target;
+}
 
 function normalizeKey(value: string) {
   return value
@@ -158,6 +181,89 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
   const [target, setTarget] = useState<SyncTarget>("reports");
   const [isLaunching, setIsLaunching] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const [syncJob, setSyncJob] = useState<SyncJob | null>(null);
+
+  const loadSyncJob = useCallback(
+    async (jobId: string) => {
+      const { data, error } = await supabase
+        .from("sync_jobs")
+        .select(
+          "id,target,dry_run,status,progress_pct,current_step,created_by,created_by_email,github_run_id,github_run_url,error_message,started_at,finished_at,created_at,updated_at",
+        )
+        .eq("id", jobId)
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+      return data as SyncJob;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function bootstrapSyncJob() {
+      const storageKey = syncJobStorageKey(profile.id);
+      const storedJobId = window.localStorage.getItem(storageKey);
+
+      if (storedJobId) {
+        const job = await loadSyncJob(storedJobId);
+        if (!ignore && job) {
+          setSyncJob(job);
+          return;
+        }
+      }
+
+      const { data } = await supabase
+        .from("sync_jobs")
+        .select(
+          "id,target,dry_run,status,progress_pct,current_step,created_by,created_by_email,github_run_id,github_run_url,error_message,started_at,finished_at,created_at,updated_at",
+        )
+        .eq("created_by", profile.id)
+        .in("status", ["queued", "running"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const latestJob = ((data || [])[0] as SyncJob | undefined) ?? null;
+      if (!ignore && latestJob) {
+        window.localStorage.setItem(storageKey, latestJob.id);
+        setSyncJob(latestJob);
+      }
+    }
+
+    bootstrapSyncJob();
+    return () => {
+      ignore = true;
+    };
+  }, [loadSyncJob, profile.id]);
+
+  useEffect(() => {
+    if (!isSyncJobActive(syncJob)) {
+      return;
+    }
+
+    let ignore = false;
+    const storageKey = syncJobStorageKey(profile.id);
+
+    async function poll() {
+      const nextJob = await loadSyncJob(syncJob!.id);
+      if (ignore || !nextJob) {
+        return;
+      }
+      setSyncJob(nextJob);
+      window.localStorage.setItem(storageKey, nextJob.id);
+    }
+
+    const interval = window.setInterval(poll, 5000);
+    poll();
+
+    return () => {
+      ignore = true;
+      window.clearInterval(interval);
+    };
+  }, [loadSyncJob, profile.id, syncJob]);
 
   if (profile.role !== "admin") {
     return null;
@@ -167,7 +273,7 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
     setIsLaunching(true);
     setMessage(null);
 
-    const { error } = await supabase.functions.invoke("trigger-sync", {
+    const { data, error } = await supabase.functions.invoke("trigger-sync", {
       body: {
         target,
         dry_run: false,
@@ -184,6 +290,11 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
     }
 
     const label = SYNC_TARGETS.find((option) => option.value === target)?.label || target;
+    const job = (data as { job?: SyncJob } | null)?.job ?? null;
+    if (job) {
+      window.localStorage.setItem(syncJobStorageKey(profile.id), job.id);
+      setSyncJob(job);
+    }
     setMessage({
       type: "ok",
       text: `Sincronizacion lanzada para ${label}. GitHub Actions la ejecutara en segundo plano.`,
@@ -192,6 +303,12 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
   }
 
   const selectedTarget = SYNC_TARGETS.find((option) => option.value === target);
+  const activeJob = syncJob;
+  const activeProgress = Math.max(6, Math.min(100, activeJob?.progress_pct ?? 0));
+  const activeStatusLabel = activeJob ? SYNC_STATUS_LABEL[activeJob.status] : null;
+  const activeJobText = activeJob?.current_step || activeStatusLabel || null;
+  const activeJobTarget = activeJob ? formatSyncJobTarget(activeJob.target) : null;
+  const activeJobFinished = activeJob?.status === "success" || activeJob?.status === "error";
 
   return (
     <section className="admin-sync-panel" aria-label="Sincronizacion de datos">
@@ -208,6 +325,7 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
           Fuente
           <select
             onChange={(event) => setTarget(event.target.value as SyncTarget)}
+            disabled={isSyncJobActive(activeJob)}
             value={target}
           >
             {SYNC_TARGETS.map((option) => (
@@ -217,7 +335,7 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
             ))}
           </select>
         </label>
-        <button disabled={isLaunching} onClick={handleLaunchSync} type="button">
+        <button disabled={isLaunching || isSyncJobActive(activeJob)} onClick={handleLaunchSync} type="button">
           {isLaunching ? "Lanzando..." : "Actualizar"}
         </button>
       </div>
@@ -235,6 +353,43 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
           </span>
         ) : null}
       </div>
+      {activeJob ? (
+        <div className={`admin-sync-progress${activeJobFinished ? ` is-${activeJob.status}` : ""}`}>
+          <div className="admin-sync-progress__meta">
+            <div>
+              <div className="admin-sync-progress__eyebrow">
+                {activeJobTarget} · {activeStatusLabel}
+              </div>
+              <strong>{activeJobText}</strong>
+            </div>
+            <div className="admin-sync-progress__pct">{activeProgress}%</div>
+          </div>
+          <div className="admin-sync-progress__track" aria-hidden="true">
+            <div className="admin-sync-progress__fill" style={{ width: `${activeProgress}%` }}>
+              <span className="admin-sync-progress__crest">
+                <img src="/escudo/unionistar.png" alt="" />
+              </span>
+            </div>
+          </div>
+          <div className="admin-sync-progress__foot">
+            <span>
+              {activeJob.dry_run ? "Simulacion" : "Ejecucion real"} · Última actualización{" "}
+              {new Date(activeJob.updated_at).toLocaleTimeString("es-ES", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+            {activeJob.github_run_url ? (
+              <a href={activeJob.github_run_url} rel="noreferrer" target="_blank">
+                Ver ejecución
+              </a>
+            ) : null}
+          </div>
+          {activeJob.error_message ? (
+            <div className="admin-sync-progress__error">{activeJob.error_message}</div>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -273,7 +428,7 @@ async function fetchAllCalendarMatches(seasonId: string) {
     const { data, error } = await supabase
       .from("calendar_matches")
       .select(
-        "id,competition,group_name,matchday,match_date,kickoff_time,home_team_name,away_team_name,normalized_home_team_name,normalized_away_team_name,home_team_id,away_team_id,status,venue,city,slug",
+        "id,competition,group_name,matchday,match_date,kickoff_time,home_team_name,away_team_name,normalized_home_team_name,normalized_away_team_name,home_team_id,away_team_id,status,venue,city,slug,raw_data",
       )
       .eq("season_id", seasonId)
       .order("match_date", { ascending: true })

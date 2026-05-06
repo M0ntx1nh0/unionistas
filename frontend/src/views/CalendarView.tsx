@@ -29,6 +29,13 @@ type EnrichedMatch = CalendarMatch & {
   interestClass: string;
 };
 
+type RoundOption = {
+  key: string;
+  label: string;
+  sortOrder: number;
+  firstDate: string;
+};
+
 const COMPETITIONS = ["1RFEF", "2RFEF"] as const;
 
 const INTEREST_BUCKETS = [
@@ -432,27 +439,162 @@ function activeCalendarDate() {
   return date.toISOString().slice(0, 10);
 }
 
-function defaultMatchday(matches: CalendarMatch[], competition: string) {
+function compactPlayoffGroupLabel(groupName: string | null | undefined) {
+  const normalized = normalizeText(groupName);
+  if (!normalized) return "Playoff";
+  if (normalized.includes("playoff ascenso")) return "Playoff ascenso";
+  if (normalized.includes("playoff descenso")) return "Playoff descenso";
+  return groupName || "Playoff";
+}
+
+function playoffShortPhase(groupName: string | null | undefined) {
+  const normalized = normalizeText(groupName);
+  if (normalized.includes("playoff ascenso") && normalized.includes("semifinal")) return "PO Semis Asc";
+  if (normalized.includes("playoff ascenso") && normalized.includes("final")) return "PO Final Asc";
+  if (normalized.includes("playoff descenso")) return "PO Desc";
+  return null;
+}
+
+function groupDateOrder(matches: CalendarMatch[]) {
+  const byGroup = new Map<string, string[]>();
+
+  for (const match of matches) {
+    const rawMatchday = rawTextValue(match.raw_data, "matchday");
+    if (match.matchday !== null || !match.group_name) continue;
+    const key = normalizeText(match.group_name);
+    const date = match.match_date || "";
+    if (!date) continue;
+    byGroup.set(key, [...(byGroup.get(key) || []), date]);
+  }
+
+  const ordered = new Map<string, string[]>();
+  for (const [groupKey, dates] of byGroup.entries()) {
+    ordered.set(groupKey, Array.from(new Set(dates)).sort((a, b) => a.localeCompare(b)));
+  }
+
+  return ordered;
+}
+
+function inferPlayoffLeg(
+  groupName: string | null | undefined,
+  matchDate: string | null | undefined,
+  playoffDatesByGroup?: Map<string, string[]>,
+) {
+  if (!groupName || !matchDate || !playoffDatesByGroup) return null;
+  const dates = playoffDatesByGroup.get(normalizeText(groupName));
+  if (!dates?.length) return null;
+
+  const dateIndex = dates.indexOf(matchDate);
+  if (dateIndex === -1) return null;
+
+  if (dates.length === 1) return "Ida";
+
+  const idaCutoff = Math.ceil(dates.length / 2);
+  return dateIndex < idaCutoff ? "Ida" : "Vuelta";
+}
+
+function roundInfo(match: CalendarMatch, playoffDatesByGroup?: Map<string, string[]>): RoundOption {
+  if (match.matchday !== null) {
+    return {
+      key: `matchday:${match.matchday}`,
+      label: `J${match.matchday}`,
+      sortOrder: match.matchday,
+      firstDate: match.match_date || "9999-12-31",
+    };
+  }
+
+  const rawMatchday = rawTextValue(match.raw_data, "matchday");
+  const normalized = normalizeText(rawMatchday);
+  const playoffGroupLabel = compactPlayoffGroupLabel(match.group_name);
+  const playoffGroupKey = normalizeText(playoffGroupLabel).replace(/\s+/g, "-") || "playoff";
+  const shortPhase = playoffShortPhase(match.group_name);
+  const inferredLeg = inferPlayoffLeg(match.group_name, match.match_date, playoffDatesByGroup);
+
+  if (normalized === "semifinales") {
+    return {
+      key: `phase:${playoffGroupKey}:semifinales-ida`,
+      label: shortPhase ? `${shortPhase} Ida` : `${playoffGroupLabel} · Semifinales · Ida`,
+      sortOrder: 1001,
+      firstDate: match.match_date || "9999-12-31",
+    };
+  }
+
+  if (normalized === "vuelta semifinales") {
+    return {
+      key: `phase:${playoffGroupKey}:semifinales-vuelta`,
+      label: shortPhase ? `${shortPhase} Vuelta` : `${playoffGroupLabel} · Semifinales · Vuelta`,
+      sortOrder: 1002,
+      firstDate: match.match_date || "9999-12-31",
+    };
+  }
+
+  if (normalized === "final") {
+    return {
+      key: `phase:${playoffGroupKey}:final-ida`,
+      label: shortPhase ? `${shortPhase} Ida` : `${playoffGroupLabel} · Final · Ida`,
+      sortOrder: 1003,
+      firstDate: match.match_date || "9999-12-31",
+    };
+  }
+
+  if (normalized === "vuelta final") {
+    return {
+      key: `phase:${playoffGroupKey}:final-vuelta`,
+      label: shortPhase ? `${shortPhase} Vuelta` : `${playoffGroupLabel} · Final · Vuelta`,
+      sortOrder: 1004,
+      firstDate: match.match_date || "9999-12-31",
+    };
+  }
+
+  if (shortPhase && inferredLeg) {
+    const isFinal = normalizeText(match.group_name).includes("final");
+    return {
+      key: `phase:${playoffGroupKey}:${isFinal ? "final" : "semifinales"}-${inferredLeg.toLowerCase()}`,
+      label: `${shortPhase} ${inferredLeg}`,
+      sortOrder: isFinal ? (inferredLeg === "Ida" ? 1003 : 1004) : inferredLeg === "Ida" ? 1001 : 1002,
+      firstDate: match.match_date || "9999-12-31",
+    };
+  }
+
+  const fallbackLabel = rawMatchday || match.group_name || "Sin fase";
+  return {
+    key: `phase:${normalizeText(fallbackLabel).replace(/\s+/g, "-") || "sin-fase"}`,
+    label: fallbackLabel,
+    sortOrder: 2000,
+    firstDate: match.match_date || "9999-12-31",
+  };
+}
+
+function buildRoundOptions(matches: CalendarMatch[], competition: string) {
+  const playoffDatesByGroup = groupDateOrder(matches.filter((match) => competitionKey(match.competition) === competition));
+  const options = new Map<string, RoundOption>();
+
+  for (const match of matches) {
+    if (competitionKey(match.competition) !== competition) continue;
+    const info = roundInfo(match, playoffDatesByGroup);
+    const current = options.get(info.key);
+    if (!current) {
+      options.set(info.key, info);
+      continue;
+    }
+    if (info.firstDate < current.firstDate) {
+      options.set(info.key, { ...current, firstDate: info.firstDate });
+    }
+  }
+
+  return Array.from(options.values()).sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    const dateCompare = a.firstDate.localeCompare(b.firstDate);
+    if (dateCompare !== 0) return dateCompare;
+    return a.label.localeCompare(b.label, "es");
+  });
+}
+
+function defaultRoundKey(matches: CalendarMatch[], competition: string) {
   const referenceDate = activeCalendarDate();
-  const upcoming = matches
-    .filter(
-      (match) =>
-        competitionKey(match.competition) === competition &&
-        match.matchday !== null &&
-        (!match.match_date || match.match_date >= referenceDate),
-    )
-    .sort((a, b) => {
-      const dateCompare = (a.match_date || "9999-12-31").localeCompare(b.match_date || "9999-12-31");
-      if (dateCompare !== 0) return dateCompare;
-      return (a.matchday || 0) - (b.matchday || 0);
-    });
-
-  if (upcoming[0]?.matchday) return upcoming[0].matchday;
-
-  return (
-    matches.find((match) => competitionKey(match.competition) === competition && match.matchday !== null)
-      ?.matchday || 1
-  );
+  const options = buildRoundOptions(matches, competition);
+  const upcoming = options.find((option) => option.firstDate >= referenceDate);
+  return upcoming?.key || options[0]?.key || null;
 }
 
 function TeamLogo({
@@ -597,9 +739,16 @@ function CalendarOverviewCharts({ matches }: { matches: EnrichedMatch[] }) {
   return (
     <section className="calendar-overview-charts">
       {COMPETITIONS.map((competition) => {
-        const matchday = defaultMatchday(matches, competition);
+        const activeRoundKey = defaultRoundKey(matches, competition);
+        const roundOptions = buildRoundOptions(matches, competition);
+        const activeRound = roundOptions.find((option) => option.key === activeRoundKey);
+        const playoffDatesByGroup = groupDateOrder(
+          matches.filter((match) => competitionKey(match.competition) === competition),
+        );
         const competitionMatches = matches.filter(
-          (match) => competitionKey(match.competition) === competition && match.matchday === matchday,
+          (match) =>
+            competitionKey(match.competition) === competition &&
+            roundInfo(match, playoffDatesByGroup).key === activeRoundKey,
         );
         const playersTotal = competitionMatches.reduce((total, match) => total + match.playersTotal, 0);
 
@@ -608,7 +757,7 @@ function CalendarOverviewCharts({ matches }: { matches: EnrichedMatch[] }) {
             key={competition}
             matches={competitionMatches}
             subtitle={`${competitionMatches.length} partidos · ${playersTotal} jugadores`}
-            title={`${competition} · Jornada ${matchday}`}
+            title={`${competition} · ${activeRound?.label || "Sin fase"}`}
           />
         );
       })}
@@ -620,18 +769,20 @@ function CalendarMatchCard({
   logoMap,
   match,
   onOpenPlayer,
+  roundLabel,
 }: {
   logoMap: TeamLogoMap;
   match: EnrichedMatch;
   onOpenPlayer: (player: CalendarPlayer) => void;
+  roundLabel: string;
 }) {
   const competition = competitionKey(match.competition);
   return (
     <article className="calendar-match-card">
       <div className="calendar-match-card__main">
         <span className="calendar-match-card__meta">
-          {competitionKey(match.competition) || match.competition} | {match.group_name || "Sin grupo"} | Jornada{" "}
-          {match.matchday || "-"}
+          {competitionKey(match.competition) || match.competition} | {match.group_name || "Sin grupo"} |{" "}
+          {roundLabel}
         </span>
         <div className="calendar-match-card__teams">
           <div className="calendar-team-name calendar-team-name--large">
@@ -694,25 +845,17 @@ function CompetitionCalendarSection({
     () => Array.from(new Set(competitionMatches.map((match) => match.group_name || "Sin grupo"))).sort(sortGroups),
     [competitionMatches],
   );
-  const matchdays = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          competitionMatches
-            .filter((match) => match.matchday !== null)
-            .map((match) => match.matchday as number),
-        ),
-      ).sort((a, b) => a - b),
-    [competitionMatches],
-  );
-  const defaultSelectedMatchday = defaultMatchday(matches, competition);
+  const rounds = useMemo(() => buildRoundOptions(competitionMatches, competition), [competition, competitionMatches]);
+  const playoffDatesByGroup = useMemo(() => groupDateOrder(competitionMatches), [competitionMatches]);
+  const defaultSelectedRoundKey = defaultRoundKey(matches, competition);
 
   const [selectedGroups, setSelectedGroups] = useState<string[]>(groups);
-  const [selectedMatchday, setSelectedMatchday] = useState<number | null>(null);
+  const [selectedRoundKey, setSelectedRoundKey] = useState<string | null>(null);
 
-  const activeMatchday = selectedMatchday ?? defaultSelectedMatchday;
+  const activeRoundKey = selectedRoundKey ?? defaultSelectedRoundKey;
   const safeSelectedGroups = selectedGroups.length ? selectedGroups : groups;
-  const currentIndex = matchdays.indexOf(activeMatchday);
+  const currentIndex = rounds.findIndex((round) => round.key === activeRoundKey);
+  const activeRound = rounds.find((round) => round.key === activeRoundKey);
 
   useEffect(() => {
     setSelectedGroups((current) => {
@@ -722,17 +865,17 @@ function CompetitionCalendarSection({
   }, [groups]);
 
   useEffect(() => {
-    if (!matchdays.length) return;
-    if (selectedMatchday !== null && !matchdays.includes(selectedMatchday)) {
-      setSelectedMatchday(null);
+    if (!rounds.length) return;
+    if (selectedRoundKey !== null && !rounds.some((round) => round.key === selectedRoundKey)) {
+      setSelectedRoundKey(null);
     }
-  }, [matchdays, selectedMatchday]);
+  }, [rounds, selectedRoundKey]);
 
   const visibleMatches = matches
     .filter(
       (match) =>
         competitionKey(match.competition) === competition &&
-        match.matchday === activeMatchday &&
+        roundInfo(match, playoffDatesByGroup).key === activeRoundKey &&
         safeSelectedGroups.includes(match.group_name || "Sin grupo"),
     )
     .sort((a, b) => {
@@ -757,7 +900,7 @@ function CompetitionCalendarSection({
     <section className="calendar-competition-section">
       <div className="section-title">
         <h2>{competition}</h2>
-        <span>J{activeMatchday}</span>
+        <span>{activeRound?.label || "Sin fase"}</span>
       </div>
 
       <div className="calendar-section-controls">
@@ -774,14 +917,14 @@ function CompetitionCalendarSection({
           ))}
         </div>
         <label>
-          Jornada
+          Ronda
           <select
-            onChange={(event) => setSelectedMatchday(Number(event.target.value))}
-            value={activeMatchday}
+            onChange={(event) => setSelectedRoundKey(event.target.value)}
+            value={activeRoundKey || ""}
           >
-            {matchdays.map((matchday) => (
-              <option key={matchday} value={matchday}>
-                {matchday}
+            {rounds.map((round) => (
+              <option key={round.key} value={round.key}>
+                {round.label}
               </option>
             ))}
           </select>
@@ -789,14 +932,14 @@ function CompetitionCalendarSection({
         <div className="calendar-nav-buttons">
           <button
             disabled={currentIndex <= 0}
-            onClick={() => setSelectedMatchday(matchdays[currentIndex - 1])}
+            onClick={() => setSelectedRoundKey(rounds[currentIndex - 1]?.key || null)}
             type="button"
           >
             ←
           </button>
           <button
-            disabled={currentIndex === -1 || currentIndex >= matchdays.length - 1}
-            onClick={() => setSelectedMatchday(matchdays[currentIndex + 1])}
+            disabled={currentIndex === -1 || currentIndex >= rounds.length - 1}
+            onClick={() => setSelectedRoundKey(rounds[currentIndex + 1]?.key || null)}
             type="button"
           >
             →
@@ -827,6 +970,7 @@ function CompetitionCalendarSection({
               logoMap={logoMap}
               match={match}
               onOpenPlayer={onOpenPlayer}
+              roundLabel={activeRound?.label || roundInfo(match, playoffDatesByGroup).label}
             />
           ))
         ) : (
