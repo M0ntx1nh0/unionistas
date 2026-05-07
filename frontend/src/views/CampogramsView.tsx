@@ -124,6 +124,86 @@ const CATEGORY_LEGEND = [
   { label: "Otra", className: "campogram-category--other" },
 ];
 
+const UNIONISTAS_PLAYER_KEYS = new Set([
+  "jan encuentra martin",
+  "henri dedorres hiobi ntola",
+  "abderrezzek saidi",
+  "jose adam arvelo lopez",
+  "hugo de bustos blanco",
+  "marco suarez coronas lastra",
+  "pere marco sunerc",
+  "juan manuel lendinez moreno",
+  "ange josue chibozo",
+  "jose manuel lopez plaza",
+  "aleix gorjon vivo",
+  "raul prada lozano",
+  "jose ramon masllorens doria",
+  "jose maria perez garcia",
+  "vadik murria soriano",
+  "salvador montanez carrasco",
+  "juan jesus rodriguez rodriguez",
+  "sergio sanchis hernandez",
+  "juan artola canales",
+  "mounir errahaly",
+  "victor olmedo selles",
+  "aaron pinan de la fuente",
+  "alvaro gomez martin",
+  "carlos de la nava garcia",
+  "ramiro mayor ruiz",
+]);
+
+const OBJECTIVE_POSITION_LINE: Record<string, "portero" | "defensas" | "centrocampistas" | "delanteros"> = {
+  portero: "portero",
+  gk: "portero",
+  "lateral izquierdo": "defensas",
+  "lateral derecho": "defensas",
+  "defensa central izquierdo": "defensas",
+  "defensa central derecho": "defensas",
+  "defensa central": "defensas",
+  "carrilero izquierdo": "defensas",
+  "carrilero derecho": "defensas",
+  "central izquierdo": "defensas",
+  "central derecho": "defensas",
+  central: "defensas",
+  lb: "defensas",
+  rb: "defensas",
+  lcb: "defensas",
+  rcb: "defensas",
+  cb: "defensas",
+  lwb: "defensas",
+  rwb: "defensas",
+  "mediocampista defensivo izquierdo": "centrocampistas",
+  "mediocampista defensivo derecho": "centrocampistas",
+  "mediocampista defensivo": "centrocampistas",
+  "mediocampista central izquierdo": "centrocampistas",
+  "mediocampista central derecho": "centrocampistas",
+  "mediocampista central": "centrocampistas",
+  "mediocampista ofensivo izquierdo": "centrocampistas",
+  "mediocampista ofensivo derecho": "centrocampistas",
+  "mediocampista ofensivo": "centrocampistas",
+  "extremo izquierdo": "centrocampistas",
+  "extremo derecho": "centrocampistas",
+  rdmf: "centrocampistas",
+  ldmf: "centrocampistas",
+  rcmf: "centrocampistas",
+  lcmf: "centrocampistas",
+  dmf: "centrocampistas",
+  cmf: "centrocampistas",
+  amf: "centrocampistas",
+  lamf: "centrocampistas",
+  ramf: "centrocampistas",
+  lw: "centrocampistas",
+  rw: "centrocampistas",
+  lwf: "centrocampistas",
+  rwf: "centrocampistas",
+  "delantero centro": "delanteros",
+  "delantero extremo izquierdo": "delanteros",
+  "delantero extremo derecho": "delanteros",
+  "segunda punta": "delanteros",
+  cf: "delanteros",
+  ss: "delanteros",
+};
+
 function normalizeKey(value: string | null | undefined) {
   return (value || "")
     .normalize("NFD")
@@ -202,11 +282,43 @@ function displayText(...values: unknown[]) {
   return firstText(...values) || "-";
 }
 
+const AGENCY_ALIAS_MAP: Record<string, string> = {
+  "you first": "You First",
+  "you first sports": "You First",
+  "youfirst": "You First",
+  "bahia internacional": "Bahía",
+  bahia: "Bahía",
+  "promoesport": "Promoesport",
+  "interstar deporte": "Interstar Deporte",
+  "global ases": "Global Ases",
+};
+
+function titleCaseWords(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function normalizedAgencyValue(value: string | null | undefined) {
+  const raw = firstText(value);
+  if (!raw) return { key: "", label: "" };
+  const key = normalizeKey(raw);
+  const alias = AGENCY_ALIAS_MAP[key];
+  if (alias) return { key: normalizeKey(alias), label: alias };
+  return { key, label: titleCaseWords(raw) };
+}
+
 function displayLoaned(player: CampogramPlayer) {
   const rawLoaned = rawText(player, "cedido", "cesion");
   if (rawLoaned) return rawLoaned;
   if (player.loaned === null) return "-";
   return player.loaned ? "Sí" : "No";
+}
+
+function playerAgency(player: CampogramPlayer) {
+  return normalizedAgencyValue(firstText(player.agent, rawText(player, "agente")));
 }
 
 function birthYearWithAge(value: unknown) {
@@ -454,6 +566,34 @@ function campogramCategoryToDataset(category: string | null): string | null {
   return null;
 }
 
+function objectivePositionLine(position: string | null | undefined) {
+  const normalized = normalizeKey(position || "");
+  const raw = (position || "").toLowerCase().trim().replace(/\d+$/, "");
+  return OBJECTIVE_POSITION_LINE[normalized] ?? OBJECTIVE_POSITION_LINE[raw] ?? "centrocampistas";
+}
+
+function isUnionistasObjectivePlayer(player: ObjectivePlayer) {
+  return UNIONISTAS_PLAYER_KEYS.has(normalizeKey(player.full_name || ""));
+}
+
+function isExactObjectiveNameMatch(playerName: string, objectivePlayer: ObjectivePlayer) {
+  const playerNameKey = normalizeKey(playerName);
+  return (
+    normalizeKey(objectivePlayer.full_name || "") === playerNameKey ||
+    normalizeKey(objectivePlayer.name || "") === playerNameKey
+  );
+}
+
+function campogramObjectiveStatusCompactLabel(status: string | null | undefined) {
+  const key = normalizeKey(status);
+  if (!key) return "Mat directo Wy";
+  if (key.includes("seguro")) return "Mat seguro Wy";
+  if (key.includes("probable")) return "Mat probable Wy";
+  if (key.includes("dudoso")) return "Mat dudoso Wy";
+  if (key.includes("sin")) return "Sin match Wy";
+  return "Match Wy";
+}
+
 /** Similitud Jaccard entre tokens de dos nombres normalizados (0–1). */
 function nameTokenSimilarity(a: string, b: string): number {
   const tokensA = new Set(normalizeKey(a).split(/\s+/).filter(Boolean));
@@ -489,24 +629,30 @@ function findDirectObjectivePlayer(
   minSimilarity = 0.4,
 ): ObjectivePlayer | null {
   const dataset = campogramCategoryToDataset(player.category);
-  if (!dataset) return null;
-
   const playerNameKey = normalizeKey(player.player_name);
   const playerTokens = playerNameKey.split(/\s+/).filter(Boolean);
   const playerTeamKey = normalizeTeamKey(player.team_name);
+  const playerLine = objectivePositionLine(player.position);
   let bestPlayer: ObjectivePlayer | null = null;
   let bestScore = -1;
 
   for (const op of objectivePlayers) {
-    if (op.objective_dataset !== dataset) continue;
-
     const opFullKey = normalizeKey(op.full_name || "");
     const opShortKey = normalizeKey(op.name || "");
+    const samePreferredDataset = dataset ? op.objective_dataset === dataset : false;
+    const opTeamKey = playerTeamKey ? normalizeTeamKey(op.current_team_name) : "";
+    const teamOverlap = playerTeamKey && opTeamKey ? teamTokenOverlap(playerTeamKey, opTeamKey) : 0;
+    const sameLine = objectivePositionLine(op.primary_position || op.primary_position_label) === playerLine;
 
     // 1. Coincidencia exacta → mejor puntuación posible
     if (opFullKey === playerNameKey || opShortKey === playerNameKey) {
-      if (1.0 > bestScore) {
-        bestScore = 1.0;
+      const exactScore =
+        100 +
+        (samePreferredDataset ? 4 : 0) +
+        (teamOverlap >= 0.4 ? 2 : 0) +
+        (sameLine ? 1 : 0);
+      if (exactScore > bestScore) {
+        bestScore = exactScore;
         bestPlayer = op;
       }
       continue;
@@ -521,9 +667,6 @@ function findDirectObjectivePlayer(
         containScore = 0.85;
       }
     }
-
-    const opTeamKey = playerTeamKey ? normalizeTeamKey(op.current_team_name) : "";
-    const teamOverlap = playerTeamKey && opTeamKey ? teamTokenOverlap(playerTeamKey, opTeamKey) : 0;
 
     // 3. Apellido + equipo + inicial/prefijo del primer nombre
     //    Cubre apodos abreviados: "Josh"→"Joshua", "Gero"→"Gerónimo", "Fran"→"Francisco"
@@ -579,7 +722,12 @@ function findDirectObjectivePlayer(
     // 6. Jaccard token similarity
     const jaccardFull = nameTokenSimilarity(playerNameKey, op.full_name || "");
     const jaccardShort = nameTokenSimilarity(playerNameKey, op.name || "");
-    const score = Math.max(containScore, surnameTeamScore, firstNameTeamScore, singleTokenTeamScore, jaccardFull, jaccardShort);
+    const baseScore = Math.max(containScore, surnameTeamScore, firstNameTeamScore, singleTokenTeamScore, jaccardFull, jaccardShort);
+    const score =
+      baseScore +
+      (samePreferredDataset ? 0.08 : 0) +
+      (sameLine ? 0.06 : 0) +
+      (teamOverlap >= 0.4 ? 0.05 : 0);
 
     if (score >= minSimilarity && score > bestScore) {
       bestScore = score;
@@ -679,15 +827,31 @@ function CampogramObjectiveBlock({
     return candidates[0] || null;
   }, [objectiveMatches, objectivePlayersById, player]);
 
-  // Si no hay match por informes subjetivos, intentamos matching directo por nombre + categoría
+  // Matching directo por nombre/categoría para validar o corregir matches subjetivos dudosos
   const directObjectivePlayer = useMemo(() => {
-    if (bestCandidate) return null;
     return findDirectObjectivePlayer(player, objectivePlayers);
-  }, [bestCandidate, objectivePlayers, player]);
+  }, [objectivePlayers, player]);
 
-  const selectedObjectivePlayer = bestCandidate?.objectivePlayer ?? directObjectivePlayer;
-  const radarSpecific = getObjectiveRadarForMode(selectedObjectivePlayer, "specific");
-  const radarGeneral = getObjectiveRadarForMode(selectedObjectivePlayer, "general");
+  const selectedObjectivePlayer = useMemo(() => {
+    if (!bestCandidate) return directObjectivePlayer;
+    if (!directObjectivePlayer) return bestCandidate.objectivePlayer;
+
+    const playerLine = objectivePositionLine(player.position);
+    const bestLine =
+      objectivePositionLine(bestCandidate.objectivePlayer.primary_position || bestCandidate.objectivePlayer.primary_position_label) ===
+      playerLine;
+    const directLine =
+      objectivePositionLine(directObjectivePlayer.primary_position || directObjectivePlayer.primary_position_label) ===
+      playerLine;
+    const bestExact = isExactObjectiveNameMatch(player.player_name, bestCandidate.objectivePlayer);
+    const directExact = isExactObjectiveNameMatch(player.player_name, directObjectivePlayer);
+
+    if (directExact && !bestExact) return directObjectivePlayer;
+    if (directExact && directLine && !bestLine) return directObjectivePlayer;
+    return bestCandidate.objectivePlayer;
+  }, [bestCandidate, directObjectivePlayer, player.player_name, player.position]);
+  const radarSpecific = getObjectiveRadarForMode(selectedObjectivePlayer || undefined, "specific");
+  const radarGeneral = getObjectiveRadarForMode(selectedObjectivePlayer || undefined, "general");
   const activeRadar = (mode === "specific" ? radarSpecific : radarGeneral) || radarSpecific || radarGeneral;
 
   const radarItems = useMemo(() => (activeRadar ? getObjectiveRadarItems(activeRadar) : []), [activeRadar]);
@@ -701,6 +865,68 @@ function CampogramObjectiveBlock({
   );
   const blockBalance = useMemo(() => getObjectiveRadarBlockBalance(radarItems), [radarItems]);
   const unionValue = useMemo(() => getUnionValue(blockBalance), [blockBalance]);
+
+  const closestUnionistasPlayer = useMemo(() => {
+    if (!selectedObjectivePlayer || !activeRadar) return null;
+
+    const selectedKey = objectivePlayerIdentityKey(selectedObjectivePlayer);
+    const selectedLine = objectivePositionLine(selectedObjectivePlayer.primary_position || selectedObjectivePlayer.primary_position_label);
+
+    const candidates = objectivePlayers
+      .filter((candidate) => {
+        if (!isUnionistasObjectivePlayer(candidate)) return false;
+        const candidateKey = objectivePlayerIdentityKey(candidate);
+        return !!candidateKey && candidateKey !== selectedKey;
+      })
+      .map((candidate) => {
+        const candidateRadar =
+          getObjectiveRadarForMode(candidate, mode) ||
+          getObjectiveRadarForMode(candidate, "general") ||
+          getObjectiveRadarForMode(candidate, "specific");
+        if (!candidateRadar) return null;
+
+        const similarity = calculateRadarSimilarity(activeRadar, candidateRadar);
+        if (similarity === null) return null;
+
+        return {
+          objectivePlayer: candidate,
+          similarity,
+          sameLine:
+            objectivePositionLine(candidate.primary_position || candidate.primary_position_label) === selectedLine,
+          samePosition:
+            normalizeKey(candidate.primary_position_label || candidate.primary_position || "") ===
+            normalizeKey(selectedObjectivePlayer.primary_position_label || selectedObjectivePlayer.primary_position || ""),
+          sampleCount: candidateRadar.sample_count || 0,
+        };
+      })
+      .filter(
+        (
+          candidate,
+        ): candidate is {
+          objectivePlayer: ObjectivePlayer;
+          similarity: number;
+          sameLine: boolean;
+          samePosition: boolean;
+          sampleCount: number;
+        } => candidate !== null,
+      );
+
+    const sameLineCandidates = candidates.filter((candidate) => candidate.sameLine);
+    const pool = sameLineCandidates.length ? sameLineCandidates : candidates;
+
+    return (
+      pool.sort(
+        (a, b) =>
+          Number(b.samePosition) - Number(a.samePosition) ||
+          b.similarity - a.similarity ||
+          b.sampleCount - a.sampleCount ||
+          (a.objectivePlayer.full_name || a.objectivePlayer.name || "").localeCompare(
+            b.objectivePlayer.full_name || b.objectivePlayer.name || "",
+            "es",
+          ),
+      )[0] || null
+    );
+  }, [activeRadar, mode, objectivePlayers, selectedObjectivePlayer]);
 
   const similarPlayers = useMemo(() => {
     if (!selectedObjectivePlayer || !activeRadar) return [];
@@ -749,19 +975,39 @@ function CampogramObjectiveBlock({
   return (
     <section className="campogram-objective">
       <div className="campogram-objective__head">
-        <div>
+        <div className="campogram-objective__head-main">
           <span className="profile-kicker">Datos objetivos Wyscout</span>
           <h3>Parte objetiva del jugador</h3>
+          <div className="campogram-objective__status">
+            {bestCandidate ? (
+              <span className={`${objectiveStatusClass(bestCandidate.match.match_status)} campogram-objective__status-pill`}>
+                {campogramObjectiveStatusCompactLabel(bestCandidate.match.match_status)}
+              </span>
+            ) : (
+              <span className="objective-status objective-status--directo campogram-objective__status-pill">
+                Mat directo Wy
+              </span>
+            )}
+          </div>
         </div>
-        <div className="campogram-objective__status">
-          {bestCandidate ? (
-            <span className={objectiveStatusClass(bestCandidate.match.match_status)}>
-              {objectiveStatusLabel(bestCandidate.match.match_status)}
-            </span>
-          ) : (
-            <span className="objective-status objective-status--directo">Match directo</span>
-          )}
-        </div>
+        {closestUnionistasPlayer ? (
+          <div className="campogram-objective__unionistas-similar">
+            <span className="campogram-objective__unionistas-kicker">Parecido Unionistas</span>
+            <div className="campogram-objective__unionistas-card">
+              <img
+                alt={closestUnionistasPlayer.objectivePlayer.full_name || closestUnionistasPlayer.objectivePlayer.name || "Jugador Unionistas"}
+                src={closestUnionistasPlayer.objectivePlayer.image || closestUnionistasPlayer.objectivePlayer.current_team_logo || ""}
+              />
+              <div>
+                <strong>
+                  {closestUnionistasPlayer.objectivePlayer.full_name || closestUnionistasPlayer.objectivePlayer.name || "Jugador Unionistas"}
+                </strong>
+                <span>{closestUnionistasPlayer.objectivePlayer.primary_position_label || "-"}</span>
+              </div>
+              <em>{closestUnionistasPlayer.similarity}%</em>
+            </div>
+          </div>
+        ) : null}
       </div>
       <p className="campogram-objective__meta">
         {mode === "specific" ? "Según posición específica" : "Según posición general"} ·{" "}
@@ -1378,6 +1624,7 @@ export function CampogramsView({
 }) {
   const [selectedCampogramId, setSelectedCampogramId] = useSessionState<string>("camp:selectedCampogramId", "");
   const [selectedPlayerId, setSelectedPlayerId] = useSessionState<string | null>("camp:selectedPlayerId", null);
+  const [selectedAgencyKey, setSelectedAgencyKey] = useSessionState<string>("camp:selectedAgencyKey", "");
 
   const visibleCampogramPlayers = useMemo(
     () => dedupeCampogramPlayers(campogramPlayers),
@@ -1423,6 +1670,62 @@ export function CampogramsView({
   const sinConsenso = selectedStatuses.filter((status) => status === "Sin consenso").length;
   const allStatuses = visibleCampogramPlayers.map((player) => playerStatus(player, reportMap));
   const isScoutScope = profile?.role === "scout";
+  const campogramNameById = useMemo(
+    () => new Map(campograms.map((campogram) => [campogram.id, campogram.name])),
+    [campograms],
+  );
+  const agencies = useMemo(() => {
+    const byAgency = new Map<
+      string,
+      {
+        key: string;
+        label: string;
+        count: number;
+        players: CampogramPlayer[];
+      }
+    >();
+
+    for (const player of visibleCampogramPlayers) {
+      const agency = playerAgency(player);
+      if (!agency.key) continue;
+      const current = byAgency.get(agency.key);
+      if (current) {
+        current.count += 1;
+        current.players.push(player);
+      } else {
+        byAgency.set(agency.key, {
+          key: agency.key,
+          label: agency.label,
+          count: 1,
+          players: [player],
+        });
+      }
+    }
+
+    return Array.from(byAgency.values()).sort((a, b) => a.label.localeCompare(b.label, "es"));
+  }, [visibleCampogramPlayers]);
+
+  useEffect(() => {
+    if (!selectedAgencyKey) return;
+    if (!agencies.some((agency) => agency.key === selectedAgencyKey)) {
+      setSelectedAgencyKey("");
+    }
+  }, [agencies, selectedAgencyKey, setSelectedAgencyKey]);
+
+  const filteredAgencyPlayers = useMemo(() => {
+    if (!selectedAgencyKey) return [];
+    return visibleCampogramPlayers
+      .filter((player) => playerAgency(player).key === selectedAgencyKey)
+      .sort((a, b) => {
+        const campogramDiff = (campogramNameById.get(a.campogram_id) || "").localeCompare(
+          campogramNameById.get(b.campogram_id) || "",
+          "es",
+        );
+        if (campogramDiff !== 0) return campogramDiff;
+        return a.player_name.localeCompare(b.player_name, "es");
+      });
+  }, [campogramNameById, selectedAgencyKey, visibleCampogramPlayers]);
+  const selectedAgency = agencies.find((agency) => agency.key === selectedAgencyKey) || null;
 
   return (
     <section className="campograms-view">
@@ -1503,6 +1806,74 @@ export function CampogramsView({
         objectiveMatches={objectiveMatches}
         objectivePlayers={objectivePlayers}
       />
+
+      <div className="section-title">
+        <h2>Agencias</h2>
+        <span>{agencies.length} agencias</span>
+      </div>
+
+      <section className="mini-metrics-grid campogram-selected-metrics">
+        <Metric label="Agencias detectadas" value={agencies.length} />
+        <Metric label="Jugadores con agencia" value={agencies.reduce((sum, agency) => sum + agency.count, 0)} />
+        <Metric label="Agencia seleccionada" value={selectedAgency ? selectedAgency.label : "Todas"} />
+        <Metric label="Jugadores filtrados" value={selectedAgency ? filteredAgencyPlayers.length : 0} />
+      </section>
+
+      <div className="campogram-agency-toolbar">
+        <label className="inline-control campogram-selector">
+          Agencia
+          <select
+            onChange={(event) => setSelectedAgencyKey(event.target.value)}
+            value={selectedAgencyKey}
+          >
+            <option value="">Selecciona una agencia</option>
+            {agencies.map((agency) => (
+              <option key={agency.key} value={agency.key}>
+                {agency.label} · {agency.count}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {selectedAgency ? (
+        <section className="campogram-agency-list">
+          <div className="section-title">
+            <h2>{selectedAgency.label}</h2>
+            <span>{filteredAgencyPlayers.length} jugadores</span>
+          </div>
+          <div className="campogram-agency-list__rows">
+            {filteredAgencyPlayers.length ? (
+              filteredAgencyPlayers.map((player) => (
+                <button
+                  key={player.id}
+                  type="button"
+                  className="campogram-agency-row"
+                  onClick={() => {
+                    setSelectedCampogramId(player.campogram_id);
+                    setSelectedPlayerId(player.id);
+                  }}
+                >
+                  <div className="campogram-agency-row__main">
+                    <strong>{player.player_name}</strong>
+                    <span>{player.team_name || "Sin equipo"}</span>
+                  </div>
+                  <div className="campogram-agency-row__meta">
+                    <span>{birthYearWithAge(player.birth_year)}</span>
+                    <span>{displayText(player.position)}</span>
+                    <span>{campogramNameById.get(player.campogram_id) || "-"}</span>
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="campogram-agency-empty">
+                No hay jugadores cargados para esta agencia.
+              </div>
+            )}
+          </div>
+        </section>
+      ) : null}
+
       {selectedPlayer ? (
         <div className="campogram-player-modal" role="dialog" aria-modal="true" aria-label={`Detalle ${selectedPlayer.player_name}`}>
           <button

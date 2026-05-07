@@ -33,6 +33,7 @@ scouting/
 │   └── tsconfig.json
 ├── scripts/                       # Sincronización/importación hacia Supabase
 ├── supabase/                      # Schema, migrations, policies, seed y edge functions
+├── creado para Unionistas - roles/ # Notebooks externos de modelado por roles y ranking posicional
 ├── docs/react_migration_plan.md   # Decisiones de migración y arquitectura objetivo
 └── union_context.md               # Este documento
 ```
@@ -234,6 +235,21 @@ Utilidades pequeñas y puras. No hay una capa amplia de helpers compartidos; muc
   - `all`
 - El trabajo real ocurre fuera del frontend, previsiblemente en GitHub Actions y scripts Python.
 
+### Artefactos externos de roles
+
+- La carpeta `creado para Unionistas - roles/` contiene notebooks JSON exportados de Jupyter/Colab.
+- No forman parte del flujo productivo actual del frontend ni de Supabase.
+- Su función parece ser de laboratorio analítico:
+  - cargar un Excel bruto por demarcación
+  - filtrar por minutos, altura y edad
+  - puntuar jugadores por rol
+  - combinar scores por familias de rol
+  - exportar resultados a Excel
+- Son útiles como referencia conceptual si más adelante se quiere:
+  - enriquecer `ULab`
+  - crear rankings por rol más avanzados
+  - o formalizar un motor de scouting posicional dentro de la app
+
 ## 6. Convenciones del código React
 
 ### Arquitectura y estado
@@ -258,6 +274,38 @@ Utilidades pequeñas y puras. No hay una capa amplia de helpers compartidos; muc
   - `normalizeText`
   - mapeos manuales de equipos
   - normalización de posiciones/veredictos
+
+## 7. Cambios recientes relevantes
+
+- `Wyscout` ya no funciona como actualización incremental conservadora.
+  - La sync actual reemplaza el snapshot completo por `temporada + dataset`.
+  - Borra el bloque anterior, inserta el CSV nuevo, recalcula cruces y actualiza la fecha de carga.
+  - Esto reduce incoherencias y evita depender de comparaciones finas fila a fila.
+  - La misma sync recalcula perfiles de jugador en cada carga Wyscout. La primera familia integrada es `LAT` (laterales), guardando `primary_profile`, `secondary_profile`, `profile_family` y `profile_score_map` en `objective_players`.
+
+- La fuente Wyscout desde Drive depende de `file_id` concretos.
+  - Si se borra un CSV de Drive y se vuelve a subir, el `file_id` cambia.
+  - El workflow de GitHub usa `STREAMLIT_SECRETS_TOML_B64`, no busca por nombre ni por carpeta.
+  - Además, la cuenta de servicio debe tener acceso a los archivos o a la carpeta compartida.
+
+- `CalendarView` ya no debe entender solo jornadas numéricas.
+  - Se ha adaptado para aceptar también fases manuales de playoff.
+  - La vista usa `raw_data.matchday` cuando existe y, si falta, puede inferir `Ida` o `Vuelta` por fecha dentro del bloque.
+  - Convenciones esperadas en 2RFEF:
+    - `PO Semis Asc Ida`
+    - `PO Semis Asc Vuelta`
+    - `PO Final Asc Ida`
+    - `PO Final Asc Vuelta`
+    - `PO Desc Ida`
+    - `PO Desc Vuelta`
+
+- `CampogramsView` se ha refinado en la parte objetiva.
+  - La tarjeta Wyscout ya muestra un match abreviado tipo `Mat seguro Wy`.
+  - También calcula un `Parecido Unionistas` con heurística priorizando línea posicional y mejor similitud útil.
+- El laboratorio de roles ya ha empezado a migrarse desde los notebooks externos.
+  - La carpeta `creado para Unionistas - roles/` sigue siendo la fuente conceptual de pesos y métricas.
+  - El notebook `LAT_Roles_1_RFEF` ya está traducido a código reutilizable en `src/scouting_app/objective_profiles.py`.
+  - Queda pendiente como mejora futura montar un recálculo independiente de perfiles por si cambian pesos o definiciones sin necesidad de relanzar una sync completa de Wyscout.
 - Hay lógica duplicada entre vistas. Antes de refactorizar, conviene verificar si esa duplicidad es accidental o si responde a reglas de negocio ligeramente distintas.
 
 ### Convenciones de UI
@@ -374,3 +422,54 @@ La app React actual es una capa rica de consulta y análisis construida sobre Su
 - cruce entre datos subjetivos y objetivos
 
 Si en futuras tareas necesitamos reducir todavía más contexto, este documento debería ser el punto de entrada antes de abrir archivos grandes del frontend.
+
+## 11. Perfiles Wyscout por rol
+
+- Ya hay cinco familias integradas en producción:
+  - `Laterales`
+  - `Centrales`
+  - `Centrocampistas`
+  - `Delanteros`
+  - `Extremos`
+- Los campos previstos en `objective_players` son:
+  - `primary_profile`
+  - `secondary_profile`
+  - `profile_family`
+  - `profile_score_map`
+- El cálculo vive en `src/scouting_app/objective_profiles.py`.
+- En `LAT`, el perfil solo se asigna cuando la posición principal Wyscout del jugador es realmente lateral/carrilero, para evitar etiquetas engañosas en extremos o centrales con minutos residuales ahí.
+- En `DFC`, el perfil solo se asigna cuando la posición principal Wyscout del jugador es realmente central (`CB`, `LCB`, `RCB`), para no contaminar el modelo con pivotes o defensas que hayan pasado puntualmente por ahí.
+- En cada sync de Wyscout se recalculan estos perfiles automáticamente.
+- Además existe un rebuild independiente en `scripts/rebuild_objective_profiles.py` para recalcular perfiles y escribir solo esos campos sin relanzar una sync completa.
+- `ULab` ya está preparado para:
+  - mostrar el perfil principal en la tarjeta pequeña
+  - mostrar perfil principal y secundario en la tarjeta detalle
+  - enseñar un glosario breve de perfiles de laterales, centrales, centrocampistas, delanteros y extremos
+- En `Centrocampistas`, aunque el cuaderno original calcula muchos roles intermedios, la salida visible de producto se ha simplificado a cinco perfiles finales:
+  - `Pivote defensivo`
+  - `Organizador`
+  - `Box to Box`
+  - `Llegador`
+  - `Mediapunta creador`
+- En los mediapuntas (`AMF`, `LAMF`, `RAMF`) la salida visible se restringe a perfiles ofensivos (`Llegador` / `Mediapunta creador`) para evitar etiquetas engañosas como pivote u organizador.
+- El glosario de `ULab` funciona como acordeón:
+  - ninguna familia debe salir desplegada por defecto al abrirlo
+  - al cerrar el glosario se resetea la familia abierta
+- Para que se vean en frontend hay que:
+  - tener aplicadas las columnas nuevas en Supabase
+  - poblar esos campos mediante sync o rebuild
+  - y asegurarse de que `App.tsx` los incluya en el `select(...)` de `objective_players`
+
+## 12. Campogramas por agencia
+
+- La fuente útil para explotar agencias dentro de `Campogramas` es `campogram_players.agent`.
+- Ese campo ya se carga desde la hoja/base de campogramas y se muestra en el detalle del jugador.
+- La sección de `Agencias` en `CampogramsView` se apoya en:
+  - una normalización ligera del nombre de agencia
+  - un pequeño mapa de alias para absorber variantes evidentes (`You First`, `YOU FIRST`, `You First Sports`, etc.)
+- El flujo pensado es:
+  - resumen por agencia con número de jugadores
+  - selección de una agencia
+  - listado filtrado con jugador, edad, posición, equipo y campograma
+- La normalización debe ser conservadora: unificar variantes claras sin mezclar agencias distintas por exceso de agresividad.
+- El buscador de jugador dentro de `Agencias` se eliminó para simplificar la UX; ahora la interacción se apoya solo en el desplegable de agencia y en el listado resultante.
