@@ -381,6 +381,128 @@ p {
   color: #b53a13;
 }
 
+.admin-sync-progress {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(10, 10, 10, 0.08);
+  border-radius: 22px;
+  display: grid;
+  gap: 0.7rem;
+  grid-column: 1 / -1;
+  padding: 0.9rem 1rem 1rem;
+}
+
+.admin-sync-progress.is-success {
+  border-color: rgba(18, 122, 53, 0.22);
+}
+
+.admin-sync-progress.is-error {
+  border-color: rgba(181, 58, 19, 0.22);
+}
+
+.admin-sync-progress__meta {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.admin-sync-progress__eyebrow {
+  color: #7b7110;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  margin-bottom: 0.15rem;
+  text-transform: uppercase;
+}
+
+.admin-sync-progress__meta strong {
+  color: #121212;
+  display: block;
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.admin-sync-progress__pct {
+  color: #121212;
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.admin-sync-progress__track {
+  background: rgba(10, 10, 10, 0.08);
+  border-radius: 999px;
+  height: 1.25rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.admin-sync-progress__fill {
+  align-items: center;
+  background: linear-gradient(90deg, #b8a808 0%, #e7d21a 55%, #f2e766 100%);
+  border-radius: inherit;
+  display: flex;
+  height: 100%;
+  justify-content: flex-end;
+  min-width: 1.5rem;
+  position: relative;
+  transition: width 0.45s ease;
+}
+
+.admin-sync-progress.is-success .admin-sync-progress__fill {
+  background: linear-gradient(90deg, #2f8f45 0%, #4bb863 100%);
+}
+
+.admin-sync-progress.is-error .admin-sync-progress__fill {
+  background: linear-gradient(90deg, #b53a13 0%, #d86a45 100%);
+}
+
+.admin-sync-progress__crest {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(10, 10, 10, 0.08);
+  border-radius: 999px;
+  box-shadow: 0 8px 16px rgba(10, 10, 10, 0.18);
+  display: inline-flex;
+  height: 1.9rem;
+  justify-content: center;
+  margin-right: -0.1rem;
+  width: 1.9rem;
+}
+
+.admin-sync-progress__crest img {
+  display: block;
+  height: 1.4rem;
+  object-fit: contain;
+  width: 1.4rem;
+}
+
+.admin-sync-progress__foot {
+  align-items: center;
+  color: #5b5b55;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 0.6rem 1rem;
+  justify-content: space-between;
+}
+
+.admin-sync-progress__foot a {
+  color: #111;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.admin-sync-progress__error {
+  background: rgba(181, 58, 19, 0.08);
+  border-radius: 14px;
+  color: #9c3311;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0.7rem 0.8rem;
+}
+
 .metrics-grid {
   display: grid;
   gap: 1rem;
@@ -2183,10 +2305,15 @@ p {
 }
 
 .campogram-objective__head {
-  align-items: center;
-  display: flex;
-  gap: 0.8rem;
-  justify-content: space-between;
+  align-items: start;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.campogram-objective__head-main {
+  display: grid;
+  gap: 0.35rem;
 }
 
 .campogram-objective__head h3 {
@@ -2199,7 +2326,78 @@ p {
 .campogram-objective__status {
   align-items: center;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+}
+
+.campogram-objective__status-pill {
+  font-size: 0.76rem;
+  padding: 0.34rem 0.72rem;
+}
+
+.campogram-objective__unionistas-similar {
+  display: grid;
+  gap: 0.38rem;
+  justify-items: end;
+  min-width: 220px;
+}
+
+.campogram-objective__unionistas-kicker {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.campogram-objective__unionistas-card {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  min-width: 240px;
+  padding: 0.6rem 0.72rem;
+}
+
+.campogram-objective__unionistas-card img {
+  border-radius: 999px;
+  height: 42px;
+  object-fit: cover;
+  width: 42px;
+}
+
+.campogram-objective__unionistas-card div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.campogram-objective__unionistas-card strong {
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.campogram-objective__unionistas-card span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.campogram-objective__unionistas-card em {
+  background: rgba(224, 210, 0, 0.18);
+  border: 1px solid rgba(224, 210, 0, 0.35);
+  border-radius: 999px;
+  color: #f5ec7d;
+  font-size: 0.84rem;
+  font-style: normal;
+  font-weight: 950;
+  line-height: 1;
+  padding: 0.36rem 0.58rem;
+  white-space: nowrap;
 }
 
 .campogram-objective__meta {
@@ -2335,6 +2533,131 @@ p {
   border: 1px solid rgba(255, 255, 255, 0.12);
   min-height: unset;
   padding: 0.8rem;
+}
+
+.campogram-agency-toolbar {
+  margin-top: 18px;
+}
+
+.campogram-agency-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 18px 0 24px;
+}
+
+.campogram-agency-card {
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 18px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: left;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.campogram-agency-card:hover {
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  transform: translateY(-1px);
+}
+
+.campogram-agency-card.is-active {
+  border-color: #0f8a3b;
+  box-shadow: 0 0 0 3px rgba(15, 138, 59, 0.14);
+}
+
+.campogram-agency-card strong {
+  color: #111;
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.campogram-agency-card span {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.campogram-agency-list {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 24px;
+  margin-bottom: 28px;
+  padding: 20px;
+}
+
+.campogram-agency-list__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.campogram-agency-empty {
+  background: #fafafa;
+  border: 1px dashed rgba(0, 0, 0, 0.14);
+  border-radius: 16px;
+  color: #666;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 18px 16px;
+  text-align: center;
+}
+
+.campogram-agency-row {
+  align-items: center;
+  background: #fafafa;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 14px 16px;
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease;
+  width: 100%;
+}
+
+.campogram-agency-row:hover {
+  background: #fff;
+  border-color: rgba(15, 138, 59, 0.4);
+}
+
+.campogram-agency-row__main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.campogram-agency-row__main strong {
+  color: #111;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.campogram-agency-row__main span {
+  color: #666;
+  font-size: 0.88rem;
+}
+
+.campogram-agency-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.campogram-agency-row__meta span {
+  background: #f1f1f1;
+  border-radius: 999px;
+  color: #444;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 10px;
 }
 
 .campogram-objective__similar-card .objective-similar-card__head {
@@ -4211,13 +4534,21 @@ p {
   max-width: 520px;
 }
 
-.inline-control select {
+.inline-control select,
+.inline-control input {
   background: #ffffff;
   border: 1px solid rgba(10, 10, 10, 0.12);
   border-radius: 16px;
   color: #111111;
   min-height: 3rem;
   padding: 0.75rem 0.9rem;
+}
+
+.inline-control small {
+  color: #777;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-top: -0.2rem;
 }
 
 @media print {
@@ -4529,8 +4860,18 @@ p {
 
   .campogram-objective__head,
   .campogram-objective__similar-head {
-    align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .campogram-objective__unionistas-similar {
+    justify-items: start;
+    min-width: 0;
+  }
+
+  .campogram-objective__unionistas-card {
+    min-width: 0;
+    width: 100%;
   }
 
   .campogram-objective__radar-panel {
@@ -4832,6 +5173,85 @@ p {
   font-weight: 700;
 }
 
+.ulab-squad-card__profile-badge {
+  align-self: flex-start;
+  background: linear-gradient(180deg, #f3f0d4 0%, #e7df9b 100%);
+  border: 1px solid rgba(122, 109, 14, 0.22);
+  border-radius: 999px;
+  color: #61540d;
+  display: inline-flex;
+  font-size: 0.56rem;
+  font-weight: 900;
+  line-height: 1;
+  margin-top: 0.16rem;
+  max-width: 100%;
+  padding: 0.24rem 0.46rem;
+  text-transform: none;
+}
+
+.ulab-profiles-glossary {
+  background: #fffdf3;
+  border: 1px solid rgba(170, 150, 24, 0.18);
+  border-radius: 18px;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.ulab-profiles-glossary summary {
+  color: #6a5d11;
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 900;
+  list-style: none;
+}
+
+.ulab-profiles-glossary summary::-webkit-details-marker {
+  display: none;
+}
+
+.ulab-profiles-glossary__content {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.ulab-profiles-glossary__family {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(170, 150, 24, 0.14);
+  border-radius: 14px;
+  padding: 0.55rem 0.7rem;
+}
+
+.ulab-profiles-glossary__family summary {
+  color: #2d2b18;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.ulab-profiles-glossary__family-content {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.ulab-profiles-glossary__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.ulab-profiles-glossary__item strong {
+  color: #2d2b18;
+  font-size: 0.84rem;
+  font-weight: 900;
+}
+
+.ulab-profiles-glossary__item span {
+  color: #5b5a4f;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .ulab-squad-card__meta {
   align-items: center;
   color: #666;
@@ -4931,6 +5351,25 @@ p {
   color: #888;
   font-size: 0.75rem;
   margin: 0.1rem 0 0;
+}
+
+.ulab-detail-panel__profiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+  margin-top: 0.48rem;
+}
+
+.ulab-detail-panel__profile-badge {
+  background: linear-gradient(180deg, #f3f0d4 0%, #e7df9b 100%);
+  border: 1px solid rgba(122, 109, 14, 0.24);
+  border-radius: 999px;
+  color: #61540d;
+  display: inline-flex;
+  font-size: 0.66rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 0.34rem 0.58rem;
 }
 
 .ulab-detail-panel__crest {
