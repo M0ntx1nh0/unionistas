@@ -719,7 +719,7 @@ function AppShell({
         <ULabView objectivePlayers={objectivePlayers} />
       ) : null}
       {activeView === "Rankings" ? (
-        <RankingsView objectivePlayers={objectivePlayers} />
+        <RankingsView matches={matches} objectivePlayers={objectivePlayers} />
       ) : null}
     </main>
   );

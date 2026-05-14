@@ -504,3 +504,24 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
   - listado filtrado con jugador, edad, posición, equipo y campograma
 - La normalización debe ser conservadora: unificar variantes claras sin mezclar agencias distintas por exceso de agresividad.
 - El buscador de jugador dentro de `Agencias` se eliminó para simplificar la UX; ahora la interacción se apoya solo en el desplegable de agencia y en el listado resultante.
+
+## 13. Rankings globales
+
+- Existe una vista nueva `Rankings` separada de `ULab`, pensada para explorar a todos los jugadores de `1RFEF` y `2RFEF`, no solo a Unionistas.
+- `Rankings` arranca por defecto en `1RFEF` y permite filtrar por:
+  - competición (`1RFEF` / `2RFEF`)
+  - grupo (`Todos`, `Grupo I/II` o `Grupo 1-5` según la competición)
+- En esta vista el lenguaje debe hablar siempre de `jugadores`, no de `plantilla`.
+- Cada fila de ranking muestra:
+  - foto del jugador
+  - nombre
+  - escudo del club
+  - nombre del club
+- Para evitar lentitud al cambiar de competición o grupo, cada ranking visualiza solo un `Top 25` por métrica.
+- En `Rankings`, `Goles` y `Asistencias` se enseñan como totales enteros de temporada; `xG` y `xA` mantienen decimales.
+- El scatter de `Rankings` reutiliza la base visual de `ULab`, pero:
+  - se titula como `Dispersión de jugadores`
+  - y el texto de ayuda también habla de jugadores de la categoría
+- En `Rankings`, la identidad visual de cabecera, filtros de rankings y marca de agua del scatter debe usar el logo de la competición analizada (`1RFEF` o `2RFEF`), mientras que `ULab` mantiene el escudo de Unionistas.
+- Los filtros de `Minutos` y `Edad` del scatter de `Rankings` van integrados en la cabecera superior derecha, sin ocupar una franja aparte del gráfico.
+- Las marcas de cuartiles del scatter son visuales y discretas, pensadas como guía rápida sobre el rango, no como una lectura exacta de percentiles avanzados.

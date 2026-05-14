@@ -879,9 +879,9 @@ const METRICS_CONFIG: MetricConfig[] = [
       const min = metricsMinutes(m);
       const avg = Number(m.goals_avg);
       if (!min) return null;
-      return Math.round(avg * min / 90 * 10) / 10;
+      return Math.round(avg * min / 90);
     },
-    decimals: 1,
+    decimals: 0,
     higherIsBetter: true,
   },
   {
@@ -905,9 +905,9 @@ const METRICS_CONFIG: MetricConfig[] = [
       const min = metricsMinutes(m);
       const avg = Number(m.assists_avg);
       if (!min) return null;
-      return Math.round(avg * min / 90 * 10) / 10;
+      return Math.round(avg * min / 90);
     },
-    decimals: 1,
+    decimals: 0,
     higherIsBetter: true,
   },
   {
@@ -1052,6 +1052,8 @@ const METRICS_CONFIG: MetricConfig[] = [
     higherIsBetter: true,
   },
 ];
+
+const RANKING_ROWS_LIMIT = 25;
 
 // ─────────────────────────────────────────────────────────
 // Tarjeta de jugador de la plantilla
@@ -1837,12 +1839,30 @@ function rangePercent(value: number, min: number, max: number) {
   return ((value - min) / (max - min)) * 100;
 }
 
+function quantile(values: number[], q: number) {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const position = (sorted.length - 1) * q;
+  const base = Math.floor(position);
+  const rest = position - base;
+  if (sorted[base + 1] === undefined) return sorted[base];
+  return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
+}
+
 export function RankingsSection({
   players,
   updatedAt,
+  showClubContext = false,
+  title = "Rankings de plantilla",
+  accentLogoSrc = "/escudo/unionistar.png",
+  accentLogoAlt = "Unionistas",
 }: {
   players: ObjectivePlayer[];
   updatedAt: string | null;
+  showClubContext?: boolean;
+  title?: string;
+  accentLogoSrc?: string;
+  accentLogoAlt?: string;
 }) {
   const maxMinutesReference = useMemo(() => getMaxMinutes(players), [players]);
   const [isPositionFilterOpen, setIsPositionFilterOpen] = useState(false);
@@ -1932,14 +1952,14 @@ export function RankingsSection({
   return (
     <div className="ulab-rankings">
       <div className="ulab-rankings__head">
-        <h3 className="ulab-rankings__title">Rankings de plantilla</h3>
+        <h3 className="ulab-rankings__title">{title}</h3>
         {updatedAt ? <span className="ulab-rankings__date">{formatUpdatedAt(updatedAt)}</span> : null}
       </div>
       <div className="ulab-rankings__filters">
         <div className="ulab-rankings__filter-card ulab-rankings__filter-card--positions">
           <div className="ulab-rankings__filter-head">
             <strong>
-              <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
+              <img alt={accentLogoAlt} aria-hidden="true" src={accentLogoSrc} />
               Posición general
             </strong>
           </div>
@@ -1972,7 +1992,7 @@ export function RankingsSection({
         <div className="ulab-rankings__filter-card">
           <div className="ulab-rankings__filter-head">
             <strong>
-              <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
+              <img alt={accentLogoAlt} aria-hidden="true" src={accentLogoSrc} />
               Edad
             </strong>
           </div>
@@ -2016,7 +2036,7 @@ export function RankingsSection({
         <div className="ulab-rankings__filter-card">
           <div className="ulab-rankings__filter-head">
             <strong>
-              <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
+              <img alt={accentLogoAlt} aria-hidden="true" src={accentLogoSrc} />
               % minutos vs máximo
             </strong>
           </div>
@@ -2083,12 +2103,18 @@ export function RankingsSection({
           const best = rows[0].value;
           const worst = rows[rows.length - 1].value;
           const range = best - worst || 1;
+          const visibleRows = rows.slice(0, RANKING_ROWS_LIMIT);
 
           return (
             <div key={metric.key} className="ulab-ranking-card">
-              <div className="ulab-ranking-card__title">{metric.label}</div>
+              <div className="ulab-ranking-card__title">
+                {metric.label}
+                {rows.length > RANKING_ROWS_LIMIT ? (
+                  <small>Top {RANKING_ROWS_LIMIT}</small>
+                ) : null}
+              </div>
               <ul className="ulab-ranking-list">
-                {rows.map((row, i) => {
+                {visibleRows.map((row, i) => {
                   const barPct = metric.higherIsBetter
                     ? ((row.value - worst) / range) * 100
                     : ((best - row.value) / range) * 100;
@@ -2110,7 +2136,21 @@ export function RankingsSection({
                           {playerShortName(row.player)[0]}
                         </span>
                       )}
-                      <span className="ulab-ranking-row__name">{playerShortName(row.player)}</span>
+                      <div className="ulab-ranking-row__identity">
+                        <span className="ulab-ranking-row__name">{playerShortName(row.player)}</span>
+                        {showClubContext ? (
+                          <span className="ulab-ranking-row__club">
+                            {row.player.current_team_logo ? (
+                              <img
+                                src={row.player.current_team_logo}
+                                alt=""
+                                className="ulab-ranking-row__club-crest"
+                              />
+                            ) : null}
+                            <em>{row.player.current_team_name || "Sin equipo"}</em>
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="ulab-ranking-row__bar-wrap">
                         <div
                           className="ulab-ranking-row__bar"
@@ -2173,7 +2213,23 @@ function deterministicJitter(id: string, range: number): [number, number] {
   return [dx, dy];
 }
 
-export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
+export function ScatterPlot({
+  players,
+  showPopulationFilters = false,
+  title = "Dispersión de plantilla",
+  emptyText = "Selecciona las métricas para los ejes X e Y y visualiza la distribución de la plantilla",
+  ariaLabel = "Scatter de plantilla",
+  watermarkLogoSrc = "/escudo/unionistar.png",
+  watermarkLogoAlt = "Unionistas",
+}: {
+  players: ObjectivePlayer[];
+  showPopulationFilters?: boolean;
+  title?: string;
+  emptyText?: string;
+  ariaLabel?: string;
+  watermarkLogoSrc?: string;
+  watermarkLogoAlt?: string;
+}) {
   // Blank initial state — user must choose both axes
   const [xKey, setXKey] = useState<string | null>(null);
   const [yKey, setYKey] = useState<string | null>(null);
@@ -2182,7 +2238,43 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [focusedPlayerId, setFocusedPlayerId] = useState<string | null>(null);
   const [visibleLines, setVisibleLines] = useState<PositionLine[]>(() => [...LINE_ORDER]);
+  const minuteValues = useMemo(
+    () =>
+      players
+        .map((player) => Number((player.metrics as Record<string, unknown>)?.minutes_on_field) || 0)
+        .filter((value) => Number.isFinite(value)),
+    [players],
+  );
+  const ageValues = useMemo(
+    () =>
+      players
+        .map((player) => (player.birth_year ? new Date().getFullYear() - player.birth_year : null))
+        .filter((value): value is number => value !== null && Number.isFinite(value)),
+    [players],
+  );
+  const minuteBounds = useMemo(() => {
+    if (!minuteValues.length) return { min: 0, max: 0 };
+    return { min: Math.min(...minuteValues), max: Math.max(...minuteValues) };
+  }, [minuteValues]);
+  const ageBounds = useMemo(() => {
+    if (!ageValues.length) return { min: 16, max: 40 };
+    return { min: Math.min(...ageValues), max: Math.max(...ageValues) };
+  }, [ageValues]);
+  const [minMinutes, setMinMinutes] = useState(0);
+  const [maxMinutes, setMaxMinutes] = useState(0);
+  const [minAge, setMinAge] = useState(16);
+  const [maxAge, setMaxAge] = useState(40);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    setMinMinutes(minuteBounds.min);
+    setMaxMinutes(minuteBounds.max);
+  }, [minuteBounds.max, minuteBounds.min]);
+
+  useEffect(() => {
+    setMinAge(ageBounds.min);
+    setMaxAge(ageBounds.max);
+  }, [ageBounds.max, ageBounds.min]);
 
   const xConfig = xKey ? METRICS_CONFIG.find((m) => m.key === xKey) ?? null : null;
   const yConfig = yKey ? METRICS_CONFIG.find((m) => m.key === yKey) ?? null : null;
@@ -2196,13 +2288,32 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
         const x = xConfig.getValue(mObj);
         const y = yConfig.getValue(mObj);
         const line = positionLine(p.primary_position || p.primary_position_label);
+        const minutes = Number(mObj.minutes_on_field) || 0;
+        const age = p.birth_year ? new Date().getFullYear() - p.birth_year : null;
         if (x === null || y === null) return null;
         if (filterZero && (x === 0 || y === 0)) return null;
         if (!visibleLines.includes(line)) return null;
+        if (showPopulationFilters) {
+          if (minutes < minMinutes || minutes > maxMinutes) return null;
+          if (age === null || age < minAge || age > maxAge) return null;
+        }
         return { player: p, x, y };
       })
       .filter((d): d is ScatterPoint => d !== null);
-  }, [players, xConfig, yConfig, filterZero, visibleLines]);
+  }, [players, xConfig, yConfig, filterZero, visibleLines, showPopulationFilters, minMinutes, maxMinutes, minAge, maxAge]);
+
+  const minMinutesPercent = rangePercent(minMinutes, minuteBounds.min, minuteBounds.max);
+  const maxMinutesPercent = rangePercent(maxMinutes, minuteBounds.min, minuteBounds.max);
+  const minAgePercent = rangePercent(minAge, ageBounds.min, ageBounds.max);
+  const maxAgePercent = rangePercent(maxAge, ageBounds.min, ageBounds.max);
+  const selectedMinutesRange =
+    minuteBounds.max > minuteBounds.min
+      ? ((maxMinutes - minMinutes) / (minuteBounds.max - minuteBounds.min)) * 100
+      : 0;
+  const selectedAgeRange =
+    ageBounds.max > ageBounds.min
+      ? ((maxAge - minAge) / (ageBounds.max - ageBounds.min)) * 100
+      : 0;
 
   const xs = plotData.map((d) => d.x);
   const ys = plotData.map((d) => d.y);
@@ -2283,8 +2394,91 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
 
         {/* Cabecera del cajetín */}
         <div className="ulab-scatter__card-head">
-          <h3 className="ulab-scatter__title">Dispersión de plantilla</h3>
+          <h3 className="ulab-scatter__title">{title}</h3>
           <div className="ulab-scatter__selectors">
+            {showPopulationFilters ? (
+              <>
+                <div className="ulab-scatter__mini-filter">
+                  <div className="ulab-scatter__mini-filter-head">
+                    <strong>Minutos</strong>
+                    <span>{Math.round(minMinutes)} - {Math.round(maxMinutes)}</span>
+                  </div>
+                  <div className="ulab-scatter__mini-filter-range">
+                    <div className="ulab-scatter__mini-filter-track" />
+                    <div
+                      className="ulab-scatter__mini-filter-active"
+                      style={{ left: `${minMinutesPercent}%`, width: `${selectedMinutesRange}%` }}
+                    />
+                    {[25, 50, 75].map((value, index) => (
+                      <span
+                        key={`minutes-mini-q-${index}`}
+                        className="ulab-scatter__mini-filter-quartile"
+                        style={{ left: `${value}%` }}
+                        title={`Cuartil ${index + 1}`}
+                      />
+                    ))}
+                    <input
+                      className="ulab-scatter__mini-filter-slider ulab-scatter__mini-filter-slider--min"
+                      type="range"
+                      min={minuteBounds.min}
+                      max={Math.max(minuteBounds.min, maxMinutes)}
+                      step={1}
+                      value={minMinutes}
+                      onChange={(event) => setMinMinutes(Math.min(Number(event.target.value), maxMinutes))}
+                    />
+                    <input
+                      className="ulab-scatter__mini-filter-slider ulab-scatter__mini-filter-slider--max"
+                      type="range"
+                      min={Math.min(minMinutes, minuteBounds.max)}
+                      max={minuteBounds.max}
+                      step={1}
+                      value={maxMinutes}
+                      onChange={(event) => setMaxMinutes(Math.max(Number(event.target.value), minMinutes))}
+                    />
+                  </div>
+                </div>
+
+                <div className="ulab-scatter__mini-filter">
+                  <div className="ulab-scatter__mini-filter-head">
+                    <strong>Edad</strong>
+                    <span>{Math.round(minAge)} - {Math.round(maxAge)}</span>
+                  </div>
+                  <div className="ulab-scatter__mini-filter-range">
+                    <div className="ulab-scatter__mini-filter-track" />
+                    <div
+                      className="ulab-scatter__mini-filter-active"
+                      style={{ left: `${minAgePercent}%`, width: `${selectedAgeRange}%` }}
+                    />
+                    {[25, 50, 75].map((value, index) => (
+                      <span
+                        key={`age-mini-q-${index}`}
+                        className="ulab-scatter__mini-filter-quartile"
+                        style={{ left: `${value}%` }}
+                        title={`Cuartil ${index + 1}`}
+                      />
+                    ))}
+                    <input
+                      className="ulab-scatter__mini-filter-slider ulab-scatter__mini-filter-slider--min"
+                      type="range"
+                      min={ageBounds.min}
+                      max={Math.max(ageBounds.min, maxAge)}
+                      step={1}
+                      value={minAge}
+                      onChange={(event) => setMinAge(Math.min(Number(event.target.value), maxAge))}
+                    />
+                    <input
+                      className="ulab-scatter__mini-filter-slider ulab-scatter__mini-filter-slider--max"
+                      type="range"
+                      min={Math.min(minAge, ageBounds.max)}
+                      max={ageBounds.max}
+                      step={1}
+                      value={maxAge}
+                      onChange={(event) => setMaxAge(Math.max(Number(event.target.value), minAge))}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
             <label>
               <span>Eje X</span>
               <select
@@ -2329,7 +2523,7 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
           {!ready ? (
             <div className="ulab-scatter__empty">
               <div className="ulab-scatter__empty-icon">📊</div>
-              <p>Selecciona las métricas para los ejes X e Y<br />y visualiza la distribución de la plantilla</p>
+              <p>{emptyText}</p>
             </div>
           ) : (
             <div className="ulab-scatter__layout">
@@ -2366,7 +2560,37 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                           });
                         }}
                       >
-                        <span>{playerShortName(row.player)}</span>
+                        <span className="ulab-scatter__selection-player">
+                          {isRealPhoto(row.player.image) ? (
+                            <img
+                              src={row.player.image!}
+                              alt=""
+                              className="ulab-scatter__selection-player-photo"
+                            />
+                          ) : (
+                            <span className="ulab-scatter__selection-player-photo-ph">
+                              {playerShortName(row.player)[0]}
+                            </span>
+                          )}
+                          <span className="ulab-scatter__selection-player-copy">
+                            <strong>{playerShortName(row.player)}</strong>
+                            <span className="ulab-scatter__selection-player-meta">
+                              {row.player.current_team_logo ? (
+                                <img
+                                  src={row.player.current_team_logo}
+                                  alt=""
+                                  className="ulab-scatter__selection-player-crest"
+                                />
+                              ) : null}
+                              <em>{row.player.current_team_name || "Sin equipo"}</em>
+                              <b>
+                                {row.player.birth_year
+                                  ? `${new Date().getFullYear() - row.player.birth_year} años`
+                                  : "Edad n/d"}
+                              </b>
+                            </span>
+                          </span>
+                        </span>
                         <span>{row.x.toFixed(xConfig?.decimals ?? 0)}{xConfig?.unit ?? ""}</span>
                         <span>{row.y.toFixed(yConfig?.decimals ?? 0)}{yConfig?.unit ?? ""}</span>
                         <span>{focusedPlayerId === row.player.id ? "▲ En foco" : "Ver en gráfico"}</span>
@@ -2383,13 +2607,13 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
               <div className="ulab-scatter__main">
                 <div className="ulab-scatter__wrap" onMouseLeave={() => setTooltip(null)}>
                   <div className="ulab-scatter__watermark" aria-hidden="true">
-                    <img src="/escudo/unionistar.png" alt="" />
+                    <img src={watermarkLogoSrc} alt={watermarkLogoAlt} />
                   </div>
                   <svg
                     ref={svgRef}
                     viewBox={`0 0 ${SCATTER_W} ${SCATTER_H}`}
                     className="ulab-scatter__svg"
-                    aria-label="Scatter de plantilla"
+                    aria-label={ariaLabel}
                   >
                 {/* Axes */}
                 <line
@@ -2584,9 +2808,41 @@ export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
                         top: `calc(${(tooltip.svgY / SCATTER_H) * 100}% - 24px)`,
                       }}
                     >
-                      <strong>{playerShortName(tooltip.player)}</strong>
-                      <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
-                      <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
+                      <div className="ulab-scatter__tooltip-head">
+                        {isRealPhoto(tooltip.player.image) ? (
+                          <img
+                            src={tooltip.player.image!}
+                            alt=""
+                            className="ulab-scatter__tooltip-photo"
+                          />
+                        ) : (
+                          <span className="ulab-scatter__tooltip-photo-ph">
+                            {playerShortName(tooltip.player)[0]}
+                          </span>
+                        )}
+                        <div className="ulab-scatter__tooltip-copy">
+                          <strong>{playerShortName(tooltip.player)}</strong>
+                          <span className="ulab-scatter__tooltip-meta">
+                            {tooltip.player.current_team_logo ? (
+                              <img
+                                src={tooltip.player.current_team_logo}
+                                alt=""
+                                className="ulab-scatter__tooltip-crest"
+                              />
+                            ) : null}
+                            <em>{tooltip.player.current_team_name || "Sin equipo"}</em>
+                            <b>
+                              {tooltip.player.birth_year
+                                ? `${new Date().getFullYear() - tooltip.player.birth_year} años`
+                                : "Edad n/d"}
+                            </b>
+                          </span>
+                        </div>
+                      </div>
+                      <div className="ulab-scatter__tooltip-stats">
+                        <span>{xConfig.short}: <b>{tooltip.xVal.toFixed(xConfig.decimals)}{xConfig.unit ?? ""}</b></span>
+                        <span>{yConfig.short}: <b>{tooltip.yVal.toFixed(yConfig.decimals)}{yConfig.unit ?? ""}</b></span>
+                      </div>
                     </div>
                   ) : null}
                 </div>
