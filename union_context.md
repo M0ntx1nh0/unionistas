@@ -438,20 +438,43 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
   - `profile_score_map`
 - El cálculo vive en `src/scouting_app/objective_profiles.py`.
 - En `LAT`, el perfil solo se asigna cuando la posición principal Wyscout del jugador es realmente lateral/carrilero, para evitar etiquetas engañosas en extremos o centrales con minutos residuales ahí.
+- En `Laterales`, el producto queda simplificado a tres perfiles oficiales:
+  - `Lateral ofensivo`
+  - `Lateral interior`
+  - `Lateral defensivo`
+- En `Laterales`, ya no se expone perfil secundario; en la ficha detalle se muestra el encaje porcentual del jugador con esos tres perfiles a partir de `profile_score_map`.
+- En `Laterales`, el perfil ofensivo ya incorpora `assists_avg` para recoger mejor la producción final real, y el perfil defensivo se ha suavizado bajando el peso de `defensive_duels_won_percent` a favor de `possession_adjusted_tackle` e `interceptions`.
+- En `Laterales`, el peso de `Attacking FB` se recalibró para premiar más la producción ofensiva real (`assists_avg`, `xg_assist_avg`, pases al último tercio/área y centros precisos) y depender menos de duelo ofensivo y regate puro.
 - En `DFC`, el perfil solo se asigna cuando la posición principal Wyscout del jugador es realmente central (`CB`, `LCB`, `RCB`), para no contaminar el modelo con pivotes o defensas que hayan pasado puntualmente por ahí.
+- En `Centrales`, el producto queda simplificado a tres perfiles oficiales:
+  - `Central constructor`
+  - `Central defensivo`
+  - `Central veloz`
+- En `Centrales`, ya no se expone perfil secundario; en la ficha detalle se muestra el encaje porcentual del jugador con esos tres perfiles a partir de `profile_score_map`.
 - En cada sync de Wyscout se recalculan estos perfiles automáticamente.
 - Además existe un rebuild independiente en `scripts/rebuild_objective_profiles.py` para recalcular perfiles y escribir solo esos campos sin relanzar una sync completa.
 - `ULab` ya está preparado para:
   - mostrar el perfil principal en la tarjeta pequeña
   - mostrar perfil principal y secundario en la tarjeta detalle
   - enseñar un glosario breve de perfiles de laterales, centrales, centrocampistas, delanteros y extremos
-- En `Centrocampistas`, aunque el cuaderno original calcula muchos roles intermedios, la salida visible de producto se ha simplificado a cinco perfiles finales:
-  - `Pivote defensivo`
-  - `Organizador`
+- En `Centrocampistas`, aunque el cuaderno original calcula muchos roles intermedios, la salida visible de producto se ha simplificado a cuatro perfiles finales:
+  - `Pivote`
+  - `Mediocentro creador`
   - `Box to Box`
-  - `Llegador`
-  - `Mediapunta creador`
-- En los mediapuntas (`AMF`, `LAMF`, `RAMF`) la salida visible se restringe a perfiles ofensivos (`Llegador` / `Mediapunta creador`) para evitar etiquetas engañosas como pivote u organizador.
+  - `Mediapunta-asistente`
+- En `Centrocampistas`, ya no se expone perfil secundario; en la ficha detalle se muestra el encaje porcentual del jugador con esos cuatro perfiles a partir de `profile_score_map`.
+- En los mediapuntas (`AMF`, `LAMF`, `RAMF`) la salida visible se restringe a perfiles ofensivos (`Mediapunta-asistente` / `Box to Box`) para evitar etiquetas engañosas como pivote o mediocentro creador.
+- En `Delanteros`, la salida visible de producto queda simplificada a tres perfiles:
+  - `Segundo punta`
+  - `Delantero referencia`
+  - `Delantero profundo`
+- En `Extremos`, la salida visible de producto queda simplificada a tres perfiles:
+  - `Extremo clásico`
+  - `Extremo creador`
+  - `Extremo finalizador`
+- En `ULab`, el bloque visual de `Encaje por perfil` para centrocampistas también respeta esa restricción por posición principal: un `AMF/LAMF/RAMF` no debe mostrar `Pivote` o `Mediocentro creador` en el detalle.
+- En `ULab`, el porcentaje y la barra de minutos ya no se calculan como `minutos / (partidos * 90)`, porque eso no representa bien la disponibilidad real sin una métrica fiable de convocatorias.
+- Desde ahora, ese `%` de minutos se calcula como `minutos disputados / máximo de minutos disputados` dentro de la muestra cargada de Unionistas, y se presenta como referencia relativa de peso en minutos.
 - El glosario de `ULab` funciona como acordeón:
   - ninguna familia debe salir desplegada por defecto al abrirlo
   - al cerrar el glosario se resetea la familia abierta
@@ -459,6 +482,14 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
   - tener aplicadas las columnas nuevas en Supabase
   - poblar esos campos mediante sync o rebuild
   - y asegurarse de que `App.tsx` los incluya en el `select(...)` de `objective_players`
+- Existe un exportador reutilizable de catálogo de perfiles en `scripts/export_profile_catalog_excel.py`, pensado para generar un Excel en una sola hoja con:
+  - familia
+  - perfil visible
+  - rol base
+  - métrica técnica
+  - métrica en inglés
+  - traducción al castellano
+  - peso porcentual
 
 ## 12. Campogramas por agencia
 

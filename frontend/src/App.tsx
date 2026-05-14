@@ -456,7 +456,7 @@ async function fetchAllObjectivePlayers(seasonId: string) {
       const { data, error } = await supabase
         .from("objective_players")
         .select(
-          "id,objective_dataset,source_player_id,name,full_name,birth_year,birth_date,birth_country_name,passport_country_names,image,current_team_name,domestic_competition_name,current_team_logo,current_team_color,last_club_name,contract_expires,market_value,on_loan,positions,primary_position,primary_position_label,secondary_position,secondary_position_label,third_position,third_position_label,foot,height,weight,updated_at,metrics",
+          "id,objective_dataset,source_player_id,name,full_name,birth_year,birth_date,birth_country_name,passport_country_names,image,current_team_name,domestic_competition_name,current_team_logo,current_team_color,last_club_name,contract_expires,market_value,on_loan,positions,primary_position,primary_position_label,secondary_position,secondary_position_label,third_position,third_position_label,foot,height,weight,primary_profile,secondary_profile,profile_family,profile_score_map,updated_at,metrics",
         )
         .eq("season_id", seasonId)
         .range(from, from + pageSize - 1);

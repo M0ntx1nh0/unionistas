@@ -140,8 +140,8 @@ const POSITION_LINE: Record<string, "portero" | "defensas" | "centrocampistas" |
   "mediocampista ofensivo izquierdo": "centrocampistas",
   "mediocampista ofensivo derecho": "centrocampistas",
   "mediocampista ofensivo": "centrocampistas",
-  "extremo izquierdo": "centrocampistas",
-  "extremo derecho": "centrocampistas",
+  "extremo izquierdo": "delanteros",
+  "extremo derecho": "delanteros",
   // labels legacy
   "mediocentro def. izq.": "centrocampistas",
   "mediocentro def. der.": "centrocampistas",
@@ -161,10 +161,10 @@ const POSITION_LINE: Record<string, "portero" | "defensas" | "centrocampistas" |
   amf: "centrocampistas",
   lamf: "centrocampistas",
   ramf: "centrocampistas",
-  lw: "centrocampistas",
-  rw: "centrocampistas",
-  lwf: "centrocampistas",
-  rwf: "centrocampistas",
+  lw: "delanteros",
+  rw: "delanteros",
+  lwf: "delanteros",
+  rwf: "delanteros",
   // ── Delanteros ───────────────────────────────────────────
   "delantero centro": "delanteros",
   "delantero extremo izquierdo": "delanteros",
@@ -176,6 +176,7 @@ const POSITION_LINE: Record<string, "portero" | "defensas" | "centrocampistas" |
 
 const LINE_ORDER = ["portero", "defensas", "centrocampistas", "delanteros"] as const;
 type PositionLine = (typeof LINE_ORDER)[number];
+type GlossaryFamily = "laterales" | "centrales" | "centrocampistas" | "delanteros" | "extremos";
 
 const LINE_LABEL: Record<PositionLine, string> = {
   portero: "Portero",
@@ -190,6 +191,192 @@ const LINE_COLOR: Record<PositionLine, string> = {
   centrocampistas: "#16813a",
   delanteros: "#d9480f",
 };
+
+const PROFILE_LABEL_ES: Record<string, string> = {
+  "Attacking FB": "Lateral ofensivo",
+  "Inverted FB": "Lateral interior",
+  "Defensive FB": "Lateral defensivo",
+  "Ball playing CB": "Central constructor",
+  "Defensive CB": "Central defensivo",
+  "Fast CB": "Central veloz",
+  Pivot: "Pivote",
+  "Midfield Creator": "Mediocentro creador",
+  "Box to Box": "Box to Box",
+  "Attacking Mid Creator": "Mediapunta-asistente",
+  "Second Striker": "Segundo punta",
+  "Target Man": "Delantero referencia",
+  "Advanced Striker": "Delantero profundo",
+  "Creative Winger": "Extremo creador",
+  "Traditional Winger": "Extremo clásico",
+  "Inside Forward": "Extremo finalizador",
+};
+
+const PRIMARY_LATERAL_CODES = new Set(["LB", "RB", "LWB", "RWB"]);
+const PRIMARY_CENTER_BACK_CODES = new Set(["CB", "LCB", "RCB"]);
+const PRIMARY_MIDFIELD_CODES = new Set(["DMF", "LDMF", "RDMF", "CMF", "LCMF", "RCMF", "AMF", "LAMF", "RAMF"]);
+const PRIMARY_STRIKER_CODES = new Set(["CF", "SS"]);
+const PRIMARY_WINGER_CODES = new Set(["LW", "RW", "LWF", "RWF"]);
+
+function profileLabelEs(profile: string | null | undefined): string | null {
+  if (!profile) return null;
+  return PROFILE_LABEL_ES[profile] || profile;
+}
+
+function isPrimaryLateralPlayer(player: ObjectivePlayer): boolean {
+  const code = (player.primary_position || "").trim().toUpperCase();
+  if (PRIMARY_LATERAL_CODES.has(code)) return true;
+  const label = (player.primary_position_label || "").toLowerCase();
+  return label.includes("lateral") || label.includes("carrilero");
+}
+
+function isPrimaryCenterBackPlayer(player: ObjectivePlayer): boolean {
+  const code = (player.primary_position || "").trim().toUpperCase();
+  if (PRIMARY_CENTER_BACK_CODES.has(code)) return true;
+  const label = (player.primary_position_label || "").toLowerCase();
+  return label.includes("central");
+}
+
+function isPrimaryMidfielderPlayer(player: ObjectivePlayer): boolean {
+  const code = (player.primary_position || "").trim().toUpperCase();
+  if (PRIMARY_MIDFIELD_CODES.has(code)) return true;
+  const label = (player.primary_position_label || "").toLowerCase();
+  return label.includes("mediocampista") || label.includes("mediocentro") || label.includes("mediapunta");
+}
+
+function isPrimaryStrikerPlayer(player: ObjectivePlayer): boolean {
+  const code = (player.primary_position || "").trim().toUpperCase();
+  if (PRIMARY_STRIKER_CODES.has(code)) return true;
+  const label = (player.primary_position_label || "").toLowerCase();
+  return label.includes("delantero") || label.includes("segunda punta");
+}
+
+function isPrimaryWingerPlayer(player: ObjectivePlayer): boolean {
+  const code = (player.primary_position || "").trim().toUpperCase();
+  if (PRIMARY_WINGER_CODES.has(code)) return true;
+  const label = (player.primary_position_label || "").toLowerCase();
+  return label.includes("extremo");
+}
+
+function supportsProfileBadge(player: ObjectivePlayer): boolean {
+  if (player.profile_family === "Laterales") return isPrimaryLateralPlayer(player);
+  if (player.profile_family === "Centrales") return isPrimaryCenterBackPlayer(player);
+  if (player.profile_family === "Centrocampistas") return isPrimaryMidfielderPlayer(player);
+  if (player.profile_family === "Delanteros") return isPrimaryStrikerPlayer(player);
+  if (player.profile_family === "Extremos") return isPrimaryWingerPlayer(player);
+  return false;
+}
+
+function playerPrimaryProfileBadge(player: ObjectivePlayer): string | null {
+  if (!supportsProfileBadge(player)) return null;
+  return profileLabelEs(player.primary_profile);
+}
+
+function playerProfileBadges(player: ObjectivePlayer): string[] {
+  if (!supportsProfileBadge(player)) return [];
+  const primary = profileLabelEs(player.primary_profile);
+  const secondary = profileLabelEs(player.secondary_profile);
+  return [primary, secondary].filter((value): value is string => Boolean(value));
+}
+
+function lateralProfileDistribution(player: ObjectivePlayer) {
+  if (player.profile_family !== "Laterales" || !supportsProfileBadge(player)) return [];
+  const scoreMap = ((player.profile_score_map as Record<string, unknown> | null) || {});
+  const entries = [
+    { key: "Attacking FB", label: "Lateral ofensivo", value: Number(scoreMap["Attacking FB"]) || 0 },
+    { key: "Inverted FB", label: "Lateral interior", value: Number(scoreMap["Inverted FB"]) || 0 },
+    { key: "Defensive FB", label: "Lateral defensivo", value: Number(scoreMap["Defensive FB"]) || 0 },
+  ];
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  return entries
+    .map((entry) => ({
+      ...entry,
+      percent: total > 0 ? Math.round((Math.max(0, entry.value) / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.percent - a.percent || b.value - a.value);
+}
+
+function centerBackProfileDistribution(player: ObjectivePlayer) {
+  if (player.profile_family !== "Centrales" || !supportsProfileBadge(player)) return [];
+  const scoreMap = ((player.profile_score_map as Record<string, unknown> | null) || {});
+  const entries = [
+    { key: "Ball playing CB", label: "Central constructor", value: Number(scoreMap["Ball playing CB"]) || 0 },
+    { key: "Defensive CB", label: "Central defensivo", value: Number(scoreMap["Defensive CB"]) || 0 },
+    { key: "Fast CB", label: "Central veloz", value: Number(scoreMap["Fast CB"]) || 0 },
+  ];
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  return entries
+    .map((entry) => ({
+      ...entry,
+      percent: total > 0 ? Math.round((Math.max(0, entry.value) / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.percent - a.percent || b.value - a.value);
+}
+
+function midfieldProfileDistribution(player: ObjectivePlayer) {
+  if (player.profile_family !== "Centrocampistas" || !supportsProfileBadge(player)) return [];
+  const scoreMap = ((player.profile_score_map as Record<string, unknown> | null) || {});
+  const allEntries = [
+    { key: "Pivot", label: "Pivote", value: Number(scoreMap["Pivot"]) || 0 },
+    { key: "Midfield Creator", label: "Mediocentro creador", value: Number(scoreMap["Midfield Creator"]) || 0 },
+    { key: "Attacking Mid Creator", label: "Mediapunta-asistente", value: Number(scoreMap["Attacking Mid Creator"]) || 0 },
+    { key: "Box to Box", label: "Box to Box", value: Number(scoreMap["Box to Box"]) || 0 },
+  ];
+  const primaryCode = (player.primary_position || "").trim().toUpperCase();
+  const allowedByPosition: Record<string, string[]> = {
+    DMF: ["Pivot", "Midfield Creator", "Box to Box"],
+    LDMF: ["Pivot", "Midfield Creator", "Box to Box"],
+    RDMF: ["Pivot", "Midfield Creator", "Box to Box"],
+    CMF: ["Midfield Creator", "Box to Box", "Pivot"],
+    LCMF: ["Midfield Creator", "Box to Box", "Pivot"],
+    RCMF: ["Midfield Creator", "Box to Box", "Pivot"],
+    AMF: ["Attacking Mid Creator", "Box to Box"],
+    LAMF: ["Attacking Mid Creator", "Box to Box"],
+    RAMF: ["Attacking Mid Creator", "Box to Box"],
+  };
+  const allowedKeys = allowedByPosition[primaryCode] || allEntries.map((entry) => entry.key);
+  const entries = allEntries.filter((entry) => allowedKeys.includes(entry.key));
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  return entries
+    .map((entry) => ({
+      ...entry,
+      percent: total > 0 ? Math.round((Math.max(0, entry.value) / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.percent - a.percent || b.value - a.value);
+}
+
+function strikerProfileDistribution(player: ObjectivePlayer) {
+  if (player.profile_family !== "Delanteros" || !supportsProfileBadge(player)) return [];
+  const scoreMap = ((player.profile_score_map as Record<string, unknown> | null) || {});
+  const entries = [
+    { key: "Second Striker", label: "Segundo punta", value: Number(scoreMap["Second Striker"]) || 0 },
+    { key: "Target Man", label: "Delantero referencia", value: Number(scoreMap["Target Man"]) || 0 },
+    { key: "Advanced Striker", label: "Delantero profundo", value: Number(scoreMap["Advanced Striker"]) || 0 },
+  ];
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  return entries
+    .map((entry) => ({
+      ...entry,
+      percent: total > 0 ? Math.round((Math.max(0, entry.value) / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.percent - a.percent || b.value - a.value);
+}
+
+function wingerProfileDistribution(player: ObjectivePlayer) {
+  if (player.profile_family !== "Extremos" || !supportsProfileBadge(player)) return [];
+  const scoreMap = ((player.profile_score_map as Record<string, unknown> | null) || {});
+  const entries = [
+    { key: "Traditional Winger", label: "Extremo clásico", value: Number(scoreMap["Traditional Winger"]) || 0 },
+    { key: "Creative Winger", label: "Extremo creador", value: Number(scoreMap["Creative Winger"]) || 0 },
+    { key: "Inside Forward", label: "Extremo finalizador", value: Number(scoreMap["Inside Forward"]) || 0 },
+  ];
+  const total = entries.reduce((sum, entry) => sum + Math.max(0, entry.value), 0);
+  return entries
+    .map((entry) => ({
+      ...entry,
+      percent: total > 0 ? Math.round((Math.max(0, entry.value) / total) * 100) : 0,
+    }))
+    .sort((a, b) => b.percent - a.percent || b.value - a.value);
+}
 
 function positionLine(pos: string | null | undefined): PositionLine {
   // Primero intentar con el label normalizado, luego con el código raw
@@ -266,11 +453,19 @@ interface RawStats {
   minutes: number;
   goals: number;
   assists: number;
-  /** % de minutos disputados sobre el total de minutos posibles (partidos × 90) */
+  /** % de minutos disputados respecto al jugador con más minutos de la muestra */
   minutesPct: number;
 }
 
-function extractStats(player: ObjectivePlayer): RawStats {
+function getMaxMinutes(players: ObjectivePlayer[]): number {
+  return players.reduce((maxMinutes, currentPlayer) => {
+    const metrics = (currentPlayer.metrics as Record<string, unknown>) || {};
+    const minutes = Number(metrics.minutes_on_field) || 0;
+    return Math.max(maxMinutes, minutes);
+  }, 0);
+}
+
+function extractStats(player: ObjectivePlayer, maxMinutesReference = 0): RawStats {
   const m = (player.metrics as Record<string, unknown>) || {};
   const matches = Number(m.total_matches) || 0;
   const minutes = Number(m.minutes_on_field) || 0;
@@ -278,8 +473,8 @@ function extractStats(player: ObjectivePlayer): RawStats {
   const assistsAvg = Number(m.assists_avg) || 0;
   const goals = minutes > 0 ? Math.round(goalsAvg * minutes / 90) : 0;
   const assists = minutes > 0 ? Math.round(assistsAvg * minutes / 90) : 0;
-  // % de minutos disputados = minutos / (partidos × 90), sin asumir titularidades
-  const minutesPct = matches > 0 ? Math.min(100, Math.round((minutes / (matches * 90)) * 100)) : 0;
+  const minutesPct =
+    maxMinutesReference > 0 ? Math.min(100, Math.round((minutes / maxMinutesReference) * 100)) : 0;
   return { matches, minutes, goals, assists, minutesPct };
 }
 
@@ -863,14 +1058,19 @@ const METRICS_CONFIG: MetricConfig[] = [
 // ─────────────────────────────────────────────────────────
 function SquadPlayerCard({
   player,
+  maxMinutesReference,
   isSelected,
   onSelect,
 }: {
   player: ObjectivePlayer;
+  maxMinutesReference: number;
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const stats = useMemo(() => extractStats(player), [player]);
+  const stats = useMemo(
+    () => extractStats(player, maxMinutesReference),
+    [maxMinutesReference, player],
+  );
   const line = positionLine(player.primary_position || player.primary_position_label);
   const color = LINE_COLOR[line];
   const flag = countryFlag(player.birth_country_name);
@@ -879,6 +1079,7 @@ function SquadPlayerCard({
   const radarItems = radar ? getObjectiveRadarItems(radar) : [];
   const blockBalance = getObjectiveRadarBlockBalance(radarItems);
   const unionValue = getUnionValue(blockBalance);
+  const profileBadge = playerPrimaryProfileBadge(player);
 
   return (
     <button
@@ -912,6 +1113,11 @@ function SquadPlayerCard({
             ? normalizePositionLabel(player.primary_position)
             : positionDisplayLabel(player.primary_position_label)}
         </span>
+        {profileBadge ? (
+          <span className="ulab-squad-card__profile-badge" title={profileBadge}>
+            {profileBadge}
+          </span>
+        ) : null}
         <div className="ulab-squad-card__meta">
           {flag ? <span>{flag}</span> : null}
           {age ? <span>{age} años</span> : null}
@@ -930,7 +1136,7 @@ function SquadPlayerCard({
               className="ulab-squad-card__titularity-bar"
               style={{ width: `${stats.minutesPct}%`, background: color }}
             />
-            <span>{stats.minutesPct}% min.</span>
+            <span>{stats.minutesPct}% min. máx.</span>
           </div>
         ) : null}
       </div>
@@ -947,11 +1153,13 @@ function PlayerDetailPanel({
   player,
   allObjectivePlayers,
   squadPlayers,
+  maxMinutesReference,
   onClose,
 }: {
   player: ObjectivePlayer;
   allObjectivePlayers: ObjectivePlayer[];
   squadPlayers: ObjectivePlayer[];
+  maxMinutesReference: number;
   onClose: () => void;
 }) {
   const [ulabMode, setULabMode] = useState<ULabMode>("radar");
@@ -960,7 +1168,10 @@ function PlayerDetailPanel({
   const [comparePlayers, setComparePlayers] = useState<ObjectivePlayer[]>([]);
   const [expandedSimilarPlayerId, setExpandedSimilarPlayerId] = useState<string | null>(null);
 
-  const stats = useMemo(() => extractStats(player), [player]);
+  const stats = useMemo(
+    () => extractStats(player, maxMinutesReference),
+    [maxMinutesReference, player],
+  );
   const line = positionLine(player.primary_position || player.primary_position_label);
   const color = LINE_COLOR[line];
   const flag = countryFlag(player.birth_country_name);
@@ -1103,6 +1314,21 @@ function PlayerDetailPanel({
       return { metric, value: myVal, rank, total: sorted.length };
     }).filter((r): r is NonNullable<typeof r> => r !== null);
   }, [player, squadPlayers]);
+  const profileBadges = playerProfileBadges(player);
+  const lateralProfileMix = lateralProfileDistribution(player);
+  const centerBackProfileMix = centerBackProfileDistribution(player);
+  const midfieldProfileMix = midfieldProfileDistribution(player);
+  const strikerProfileMix = strikerProfileDistribution(player);
+  const wingerProfileMix = wingerProfileDistribution(player);
+  const detailProfileMix = lateralProfileMix.length
+    ? lateralProfileMix
+    : centerBackProfileMix.length
+      ? centerBackProfileMix
+      : midfieldProfileMix.length
+        ? midfieldProfileMix
+        : strikerProfileMix.length
+          ? strikerProfileMix
+          : wingerProfileMix;
 
   return (
     <aside className="ulab-detail-panel">
@@ -1117,6 +1343,15 @@ function PlayerDetailPanel({
             </span>
             <h2 className="ulab-detail-panel__name">{playerShortName(player)}</h2>
             <p className="ulab-detail-panel__fullname">{player.full_name}</p>
+            {profileBadges.length ? (
+              <div className="ulab-detail-panel__profiles">
+                {profileBadges.map((badge) => (
+                  <span key={badge} className="ulab-detail-panel__profile-badge">
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
         <span className="ulab-detail-panel__crest" aria-hidden="true">
@@ -1136,7 +1371,7 @@ function PlayerDetailPanel({
             <div><strong>{stats.minutes}</strong><span>minutos</span></div>
             <div><strong>{stats.goals}</strong><span>goles</span></div>
             <div><strong>{stats.assists}</strong><span>asistencias</span></div>
-            <div><strong>{stats.minutesPct}%</strong><span>min. disp.</span></div>
+            <div><strong>{stats.minutesPct}%</strong><span>min. máx.</span></div>
           </>
         ) : null}
         {unionValue > 0 ? (
@@ -1181,6 +1416,27 @@ function PlayerDetailPanel({
           ) : null}
         </div>
       </div>
+
+      {detailProfileMix.length ? (
+        <div className="ulab-detail-panel__profile-mix">
+          <span className="ulab-detail-panel__physical-label">Encaje por perfil</span>
+          <div className="ulab-detail-panel__profile-mix-list">
+            {detailProfileMix.map((entry) => (
+              <div key={entry.key} className="ulab-detail-panel__profile-mix-row">
+                <div className="ulab-detail-panel__profile-mix-head">
+                  <strong>{entry.label}</strong>
+                  <span>{entry.percent}%</span>
+                </div>
+                <div className="ulab-detail-panel__profile-mix-track">
+                  <span
+                    style={{ width: `${Math.max(6, entry.percent)}%`, background: color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Aviso si no hay datos radar */}
       {!hasRadar ? (
@@ -1588,14 +1844,15 @@ function RankingsSection({
   players: ObjectivePlayer[];
   updatedAt: string | null;
 }) {
+  const maxMinutesReference = useMemo(() => getMaxMinutes(players), [players]);
   const [isPositionFilterOpen, setIsPositionFilterOpen] = useState(false);
   const [selectedLines, setSelectedLines] = useState<PositionLine[]>(() => [...LINE_ORDER]);
   const minutePctValues = useMemo(
     () =>
       players
-        .map((player) => extractStats(player).minutesPct)
+        .map((player) => extractStats(player, maxMinutesReference).minutesPct)
         .filter((value) => Number.isFinite(value)),
-    [players],
+    [maxMinutesReference, players],
   );
   const ages = useMemo(
     () =>
@@ -1636,7 +1893,7 @@ function RankingsSection({
   const filteredPlayers = useMemo(
     () =>
       players.filter((player) => {
-        const minutesPct = extractStats(player).minutesPct;
+        const minutesPct = extractStats(player, maxMinutesReference).minutesPct;
         const line = positionLine(player.primary_position || player.primary_position_label);
         const age = player.birth_year ? new Date().getFullYear() - player.birth_year : null;
         const matchesLine = selectedLines.includes(line);
@@ -1644,7 +1901,7 @@ function RankingsSection({
         const matchesAge = age === null ? false : age >= minAge && age <= maxAge;
         return matchesLine && matchesMinutes && matchesAge;
       }),
-    [maxAge, maxMinutesPct, minAge, minMinutesPct, players, selectedLines],
+    [maxAge, maxMinutesPct, maxMinutesReference, minAge, minMinutesPct, players, selectedLines],
   );
 
   const selectedMinuteRange =
@@ -1760,7 +2017,7 @@ function RankingsSection({
           <div className="ulab-rankings__filter-head">
             <strong>
               <img alt="" aria-hidden="true" src="/escudo/unionistar.png" />
-              % minutos disputados
+              % minutos vs máximo
             </strong>
           </div>
           <div className="ulab-rankings__range-wrap">
@@ -2348,6 +2605,7 @@ function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
 // ─────────────────────────────────────────────────────────
 export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlayer[] }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [openGlossaryFamily, setOpenGlossaryFamily] = useState<GlossaryFamily | null>(null);
 
   // Filtrar jugadores de Unionistas
   const unionistasPlayers = useMemo(
@@ -2371,6 +2629,7 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
     }
     return groups;
   }, [unionistasPlayers]);
+  const squadMaxMinutes = useMemo(() => getMaxMinutes(unionistasPlayers), [unionistasPlayers]);
 
   const selectedPlayer = useMemo(
     () => unionistasPlayers.find((p) => p.id === selectedId) ?? null,
@@ -2383,6 +2642,10 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
       setSelectedId(null);
     }
   }, [selectedId, unionistasPlayers]);
+
+  function toggleGlossaryFamily(family: GlossaryFamily) {
+    setOpenGlossaryFamily((current) => (current === family ? null : family));
+  }
 
   return (
     <section className="ulab-view">
@@ -2405,6 +2668,145 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
       <div className={`ulab-layout${selectedPlayer ? " ulab-layout--with-panel" : ""}`}>
         {/* Plantilla por líneas */}
         <div className="ulab-squad">
+          <details
+            className="ulab-profiles-glossary"
+            onToggle={(event) => {
+              const element = event.currentTarget as HTMLDetailsElement;
+              if (!element.open) setOpenGlossaryFamily(null);
+            }}
+          >
+            <summary>Glosario de perfiles</summary>
+            <div className="ulab-profiles-glossary__content">
+              <details className="ulab-profiles-glossary__family" open={openGlossaryFamily === "laterales"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    toggleGlossaryFamily("laterales");
+                  }}
+                >
+                  Laterales
+                </summary>
+                <div className="ulab-profiles-glossary__family-content">
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Lateral ofensivo</strong>
+                    <span>Llega arriba, pisa área y produce peligro en campo rival.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Lateral interior</strong>
+                    <span>Se mete por dentro para ayudar en la salida, la circulación y la construcción.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Lateral defensivo</strong>
+                    <span>Destaca más en duelo, contención y trabajo sin balón.</span>
+                  </div>
+                </div>
+              </details>
+
+              <details className="ulab-profiles-glossary__family" open={openGlossaryFamily === "centrales"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    toggleGlossaryFamily("centrales");
+                  }}
+                >
+                  Centrales
+                </summary>
+                <div className="ulab-profiles-glossary__family-content">
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Central constructor</strong>
+                    <span>Saca el balón con calidad, filtra pases y activa la progresión desde atrás.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Central defensivo</strong>
+                    <span>Se impone en duelos, área y acciones de contención cerca de portería.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Central veloz</strong>
+                    <span>Central ágil y rápido para cubrir espacios, corregir errores y defender transiciones.</span>
+                  </div>
+                </div>
+              </details>
+
+              <details className="ulab-profiles-glossary__family" open={openGlossaryFamily === "centrocampistas"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    toggleGlossaryFamily("centrocampistas");
+                  }}
+                >
+                  Centrocampistas
+                </summary>
+                <div className="ulab-profiles-glossary__family-content">
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Pivote</strong>
+                    <span>Protege el carril central, roba, da equilibrio y sostiene al equipo por delante de la defensa.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Mediocentro creador</strong>
+                    <span>Conecta ataque y defensa con pase, visión y capacidad para hacer jugar al equipo.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Box to Box</strong>
+                    <span>Recorre grandes distancias y participa con impacto en defensa y ataque.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Mediapunta-asistente</strong>
+                    <span>Genera ventajas cerca del área con último pase, xA, creatividad y asistencia.</span>
+                  </div>
+                </div>
+              </details>
+
+              <details className="ulab-profiles-glossary__family" open={openGlossaryFamily === "delanteros"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    toggleGlossaryFamily("delanteros");
+                  }}
+                >
+                  Delanteros
+                </summary>
+                <div className="ulab-profiles-glossary__family-content">
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Segundo punta</strong>
+                    <span>Se mueve alrededor del nueve, llega al área y mezcla remate con apoyo creativo.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Delantero referencia</strong>
+                    <span>Fija centrales, gana juego aéreo y da una salida frontal al equipo.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Delantero profundo</strong>
+                    <span>Amenaza a la espalda, ataca el área con ritmo y vive mucho del desmarque.</span>
+                  </div>
+                </div>
+              </details>
+
+              <details className="ulab-profiles-glossary__family" open={openGlossaryFamily === "extremos"}>
+                <summary
+                  onClick={(event) => {
+                    event.preventDefault();
+                    toggleGlossaryFamily("extremos");
+                  }}
+                >
+                  Extremos
+                </summary>
+                <div className="ulab-profiles-glossary__family-content">
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Extremo clásico</strong>
+                    <span>Juega abierto, desborda por fuera y genera peligro con centro y aceleración.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Extremo creador</strong>
+                    <span>Recibe abierto o viene dentro para filtrar, asistir y crear ventajas desde banda.</span>
+                  </div>
+                  <div className="ulab-profiles-glossary__item">
+                    <strong>Extremo finalizador</strong>
+                    <span>Ataca el área con mentalidad de gol y busca acabar la jugada más que alargarla.</span>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </details>
           {unionistasPlayers.length === 0 ? (
             <div className="content-card">
               <div className="section-title">
@@ -2441,6 +2843,7 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
                         />
                         <SquadPlayerCard
                           player={player}
+                          maxMinutesReference={squadMaxMinutes}
                           isSelected={selectedId === player.id}
                           onSelect={() =>
                             setSelectedId(selectedId === player.id ? null : player.id)
@@ -2461,6 +2864,7 @@ export function ULabView({ objectivePlayers }: { objectivePlayers: ObjectivePlay
             player={selectedPlayer}
             allObjectivePlayers={objectivePlayers}
             squadPlayers={unionistasPlayers}
+            maxMinutesReference={squadMaxMinutes}
             onClose={() => setSelectedId(null)}
           />
         ) : null}

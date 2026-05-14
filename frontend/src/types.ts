@@ -134,6 +134,10 @@ export type ObjectivePlayer = {
   foot: string | null;
   height: number | null;
   weight: number | null;
+  primary_profile: string | null;
+  secondary_profile: string | null;
+  profile_family: string | null;
+  profile_score_map: Record<string, number> | null;
   updated_at: string | null;
   metrics: Record<string, unknown>;
 };
