@@ -1837,7 +1837,7 @@ function rangePercent(value: number, min: number, max: number) {
   return ((value - min) / (max - min)) * 100;
 }
 
-function RankingsSection({
+export function RankingsSection({
   players,
   updatedAt,
 }: {
@@ -2173,7 +2173,7 @@ function deterministicJitter(id: string, range: number): [number, number] {
   return [dx, dy];
 }
 
-function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
+export function ScatterPlot({ players }: { players: ObjectivePlayer[] }) {
   // Blank initial state — user must choose both axes
   const [xKey, setXKey] = useState<string | null>(null);
   const [yKey, setYKey] = useState<string | null>(null);
