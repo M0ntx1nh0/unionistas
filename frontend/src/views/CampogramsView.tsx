@@ -321,6 +321,10 @@ function playerAgency(player: CampogramPlayer) {
   return normalizedAgencyValue(firstText(player.agent, rawText(player, "agente")));
 }
 
+function playerTeamDisplay(player: CampogramPlayer) {
+  return displayText(player.team_name, rawText(player, "equipo_actual", "situacion_equipo"));
+}
+
 function birthYearWithAge(value: unknown) {
   const text = textValue(value);
   if (!text) return "-";
@@ -1856,7 +1860,7 @@ export function CampogramsView({
                 >
                   <div className="campogram-agency-row__main">
                     <strong>{player.player_name}</strong>
-                    <span>{player.team_name || "Sin equipo"}</span>
+                    <span>{playerTeamDisplay(player)}</span>
                   </div>
                   <div className="campogram-agency-row__meta">
                     <span>{birthYearWithAge(player.birth_year)}</span>
@@ -1887,7 +1891,7 @@ export function CampogramsView({
               <div>
                 <span>Detalle jugador</span>
                 <h3>{selectedPlayer.player_name}</h3>
-                <p>{selectedPlayer.team_name || "Sin equipo"} · {normalizePosition(selectedPlayer.position)}</p>
+                <p>{playerTeamDisplay(selectedPlayer)} · {normalizePosition(selectedPlayer.position)}</p>
               </div>
               <button onClick={() => setSelectedPlayerId(null)} type="button">Cerrar</button>
             </header>
