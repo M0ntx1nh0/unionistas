@@ -2644,6 +2644,13 @@ p {
   font-size: 0.88rem;
 }
 
+.campogram-agency-row__main small,
+.campogram-player-card__top small {
+  color: #0f8a3b;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .campogram-agency-row__meta {
   display: flex;
   flex-wrap: wrap;

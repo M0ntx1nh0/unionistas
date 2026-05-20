@@ -322,7 +322,26 @@ function playerAgency(player: CampogramPlayer) {
 }
 
 function playerTeamDisplay(player: CampogramPlayer) {
-  return displayText(player.team_name, rawText(player, "equipo_actual", "situacion_equipo"));
+  return displayText(rawText(player, "equipo_actual"), player.team_name, rawText(player, "situacion_equipo"));
+}
+
+function playerLoanOwnerDisplay(player: CampogramPlayer) {
+  return displayText(player.owner_team_name, rawText(player, "equipo_propietario"));
+}
+
+function playerLoanNote(player: CampogramPlayer) {
+  const loanedRaw = normalizeKey(rawText(player, "cedido"));
+  const inferredLoaned =
+    loanedRaw === "si" || loanedRaw === "s" || loanedRaw === "yes" || loanedRaw === "true" || loanedRaw === "1"
+      ? true
+      : loanedRaw === "no" || loanedRaw === "n" || loanedRaw === "false" || loanedRaw === "0"
+        ? false
+        : null;
+  const isLoaned = inferredLoaned ?? player.loaned ?? false;
+  if (!isLoaned) return "";
+  const owner = playerLoanOwnerDisplay(player);
+  if (!owner || owner === "-") return "Cedido";
+  return `Cedido por ${owner}`;
 }
 
 function birthYearWithAge(value: unknown) {
@@ -1270,7 +1289,7 @@ function PlayerDetailContent({
   return (
     <div className="campogram-detail-content">
       <div className="campogram-detail__grid">
-        <span><strong>Equipo</strong>{displayText(player.team_name, rawText(player, "equipo_actual", "situacion_equipo"))}</span>
+        <span><strong>Equipo</strong>{playerTeamDisplay(player)}</span>
         <span><strong>Categoría</strong>{displayText(player.category, rawText(player, "categoria"))}</span>
         <span><strong>Año nac.</strong>{birthYearWithAge(firstText(player.birth_year, rawText(player, "ano_nacimiento", "edad")))}</span>
         <span><strong>Posición base</strong>{normalizePosition(player.position)}</span>
@@ -1278,7 +1297,7 @@ function PlayerDetailContent({
         <span><strong>Situación equipo</strong>{displayText(rawText(player, "situacion_equipo"), player.team_name)}</span>
         <span><strong>Agente</strong>{displayText(player.agent, rawText(player, "agente"))}</span>
         <span><strong>Cesión</strong>{displayLoaned(player)}</span>
-        <span><strong>Propietario</strong>{displayText(player.owner_team_name, rawText(player, "equipo_propietario"))}</span>
+        <span><strong>Propietario</strong>{playerLoanOwnerDisplay(player)}</span>
         <span><strong>Lateralidad</strong>{displayText(player.foot, rawText(player, "lateralidad"))}</span>
         <span><strong>Consenso</strong>{status}</span>
         <span><strong>Nº informes</strong>{reports.length}</span>
@@ -1365,7 +1384,8 @@ function PlayerCard({
       <div className="campogram-player-card__top">
         <div>
           <strong>{player.player_name}</strong>
-          <span>{player.team_name || "Sin equipo"}</span>
+          <span>{playerTeamDisplay(player)}</span>
+          {playerLoanNote(player) ? <small>{playerLoanNote(player)}</small> : null}
         </div>
         <div className="campogram-player-card__badges">
           <em className={CONSENSUS_CLASS[status] || "campogram-consensus--sin-informes"}>{status}</em>
@@ -1403,7 +1423,7 @@ function CompactPlayerCard({
       type="button"
     >
       <span className="campogram-compact-card__name">{player.player_name}</span>
-      <span className="campogram-compact-card__club">{player.team_name || "Sin equipo"}</span>
+      <span className="campogram-compact-card__club">{playerTeamDisplay(player)}</span>
       <span className="campogram-compact-card__meta">
         {birthYearWithAge(player.birth_year)} · {player.category || "Sin categoría"}
       </span>
@@ -1861,6 +1881,7 @@ export function CampogramsView({
                   <div className="campogram-agency-row__main">
                     <strong>{player.player_name}</strong>
                     <span>{playerTeamDisplay(player)}</span>
+                    {playerLoanNote(player) ? <small>{playerLoanNote(player)}</small> : null}
                   </div>
                   <div className="campogram-agency-row__meta">
                     <span>{birthYearWithAge(player.birth_year)}</span>
