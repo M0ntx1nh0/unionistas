@@ -1276,9 +1276,23 @@ function OverviewCard({
   players: CampogramPlayer[];
   reportMap: Map<string, CampogramReport[]>;
 }) {
+  const totalPlayers = players.length;
+  const playersWithReports = players.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
+  const playersWithMultipleReports = players.filter((player) => (reportMap.get(player.id) || []).length > 1).length;
+  const withReportsPercentage = formatMetricPercentage(playersWithReports, totalPlayers);
+  const withMultipleReportsPercentage = formatMetricPercentage(playersWithMultipleReports, totalPlayers);
+  const withReportsColor = reportCoverageColor(playersWithReports, totalPlayers);
+  const withMultipleReportsColor = reportCoverageColor(playersWithMultipleReports, totalPlayers);
+
   return (
     <article className="campogram-overview-card">
-      <h3>{campogram.name}</h3>
+      <div className="campogram-overview-card__header">
+        <h3>{campogram.name}</h3>
+        <div className="campogram-overview-card__stats">
+          <span style={{ color: withReportsColor }}>Inf. {withReportsPercentage}</span>
+          <span style={{ color: withMultipleReportsColor }}>+1 inf. {withMultipleReportsPercentage}</span>
+        </div>
+      </div>
       <PositionMiniBars players={players} reportMap={reportMap} />
     </article>
   );

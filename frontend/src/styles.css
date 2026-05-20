@@ -1599,6 +1599,33 @@ p {
   text-transform: uppercase;
 }
 
+.campogram-overview-card__header {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.9rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.campogram-overview-card__header h3 {
+  flex: 1;
+  margin: 0;
+}
+
+.campogram-overview-card__stats {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  white-space: nowrap;
+}
+
+.campogram-overview-card__stats span {
+  font-size: 0.72rem;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
 .campogram-mini-bars {
   align-items: end;
   display: grid;
