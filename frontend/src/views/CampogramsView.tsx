@@ -124,6 +124,23 @@ const CATEGORY_LEGEND = [
   { label: "Otra", className: "campogram-category--other" },
 ];
 
+const PERCENTAGE_FORMATTER = new Intl.NumberFormat("es-ES", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+function formatMetricPercentage(numerator: number, denominator: number) {
+  if (!denominator || denominator <= 0) return "0,00%";
+  return `${PERCENTAGE_FORMATTER.format((numerator / denominator) * 100)}%`;
+}
+
+function reportCoverageColor(numerator: number, denominator: number) {
+  if (!denominator || denominator <= 0) return "#8f8f8f";
+  const ratio = Math.max(0, Math.min(1, numerator / denominator));
+  const hue = ratio * 120;
+  return `hsl(${hue} 78% 42%)`;
+}
+
 const UNIONISTAS_PLAYER_KEYS = new Set([
   "jan encuentra martin",
   "henri dedorres hiobi ntola",
@@ -1164,11 +1181,22 @@ function CampogramObjectiveBlock({
   );
 }
 
-function Metric({ label, value }: { label: string; value: number | string }) {
+function Metric({
+  label,
+  value,
+  percentage,
+}: {
+  label: string;
+  value: number | string;
+  percentage?: string | null;
+}) {
   return (
     <div className="mini-metric campogram-metric">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>
+        {value}
+        {percentage ? <small>({percentage})</small> : null}
+      </strong>
     </div>
   );
 }
@@ -1203,6 +1231,9 @@ function PositionMiniBars({
       {POSITION_ORDER.map((position) => {
         const positionPlayers = players.filter((player) => normalizePosition(player.position) === position);
         const total = positionPlayers.length;
+        const withReportCount = positionPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
+        const withReportPercentage = formatMetricPercentage(withReportCount, total);
+        const withReportColor = reportCoverageColor(withReportCount, total);
         const counts = CONSENSUS_ORDER.map((label) => ({
           label,
           value: positionPlayers.filter((player) => playerStatus(player, reportMap) === label).length,
@@ -1227,6 +1258,7 @@ function PositionMiniBars({
               )}
             </div>
             <strong>{position}</strong>
+            <em style={{ color: withReportColor }}>{withReportPercentage}</em>
             <span>{total}J</span>
           </div>
         );
@@ -1750,6 +1782,9 @@ export function CampogramsView({
       });
   }, [campogramNameById, selectedAgencyKey, visibleCampogramPlayers]);
   const selectedAgency = agencies.find((agency) => agency.key === selectedAgencyKey) || null;
+  const totalVisiblePlayers = visibleCampogramPlayers.length;
+  const visiblePlayersWithReports = visibleCampogramPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
+  const visiblePlayersWithoutReports = allStatuses.filter((status) => status === "Sin informes").length;
 
   return (
     <section className="campograms-view">
@@ -1769,13 +1804,21 @@ export function CampogramsView({
       ) : null}
 
       <section className="mini-metrics-grid">
-        <Metric label="Jugadores" value={visibleCampogramPlayers.length} />
-        <Metric label="Jugadores con informe" value={visibleCampogramPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length} />
-        <Metric label="Jugadores sin informe" value={allStatuses.filter((status) => status === "Sin informes").length} />
+        <Metric label="Jugadores" value={totalVisiblePlayers} />
+        <Metric
+          label="Jugadores con informe"
+          percentage={formatMetricPercentage(visiblePlayersWithReports, totalVisiblePlayers)}
+          value={visiblePlayersWithReports}
+        />
+        <Metric
+          label="Jugadores sin informe"
+          percentage={formatMetricPercentage(visiblePlayersWithoutReports, totalVisiblePlayers)}
+          value={visiblePlayersWithoutReports}
+        />
       </section>
 
       <div className="section-title">
-        <h2>Panorama Campogramas</h2>
+        <h2>Situación Campogramas</h2>
         <span>{campograms.length}</span>
       </div>
       <section className="campogram-overview-grid">
@@ -1809,9 +1852,17 @@ export function CampogramsView({
 
       <section className="mini-metrics-grid campogram-selected-metrics">
         <Metric label="Jugadores" value={selectedPlayers.length} />
-        <Metric label="Con informes" value={withReports} />
+        <Metric
+          label="Con informes"
+          percentage={formatMetricPercentage(withReports, selectedPlayers.length)}
+          value={withReports}
+        />
         <Metric label="Sin informes" value={selectedPlayers.length - withReports} />
-        <Metric label="Sin consenso" value={sinConsenso} />
+        <Metric
+          label="Sin consenso"
+          percentage={formatMetricPercentage(sinConsenso, selectedPlayers.length)}
+          value={sinConsenso}
+        />
       </section>
 
       <div className="section-title">

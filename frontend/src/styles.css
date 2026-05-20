@@ -869,6 +869,13 @@ p {
   margin-top: 0.55rem;
 }
 
+.mini-metric strong small {
+  color: #5f5f59;
+  font-size: 0.42em;
+  font-weight: 800;
+  margin-left: 0.4rem;
+}
+
 .content-card {
   margin-top: 1rem;
   padding: 1.2rem;
@@ -1650,6 +1657,14 @@ p {
   font-weight: 950;
   min-height: 1.7rem;
   text-align: center;
+}
+
+.campogram-mini-position em {
+  color: #0f8a3b;
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .campogram-mini-position span {
