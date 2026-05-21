@@ -525,3 +525,28 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - En `Rankings`, la identidad visual de cabecera, filtros de rankings y marca de agua del scatter debe usar el logo de la competición analizada (`1RFEF` o `2RFEF`), mientras que `ULab` mantiene el escudo de Unionistas.
 - Los filtros de `Minutos` y `Edad` del scatter de `Rankings` van integrados en la cabecera superior derecha, sin ocupar una franja aparte del gráfico.
 - Las marcas de cuartiles del scatter son visuales y discretas, pensadas como guía rápida sobre el rango, no como una lectura exacta de percentiles avanzados.
+
+## 14. Pipeline de seguimiento en Campogramas
+
+- Se ha preparado una capa nueva de seguimiento comercial/relacional sobre `campogram_players`, independiente del consenso scout.
+- Los estados válidos son:
+  - `Lista`
+  - `Tocado`
+  - `Ofrecido`
+  - `Rechazado`
+- La lógica visual prevista es:
+  - `Lista` en gris
+  - `Tocado` en verde
+  - `Ofrecido` en naranja
+  - `Rechazado` en rojo
+- Este estado no debe verlo ni usarlo un `scout`; solo `admin` y `coordinator`.
+- En frontend:
+  - los `admin/coordinator` ven la pastilla en tarjetas y un selector en el detalle
+  - `scout` y `viewer` no cargan ni muestran esos campos
+- En base:
+  - `campogram_players` guarda el estado actual y la fecha del último cambio consolidado
+  - existe una tabla de histórico `campogram_player_pipeline_events`
+  - la escritura se canaliza por una función SQL `set_campogram_player_pipeline_status(...)`
+- Regla especial aprobada:
+  - si un jugador pasa de `Lista` a otro estado y vuelve a `Lista` antes de 1 hora, el cambio se anula
+  - en ese caso el jugador vuelve a quedar como `Lista` sin fecha consolidada de cambio

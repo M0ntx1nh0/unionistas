@@ -92,6 +92,7 @@ grant execute on function public.is_active_profile() to authenticated;
 grant execute on function public.can_manage_data() to authenticated;
 grant execute on function public.can_read_all_reports() to authenticated;
 grant execute on function public.is_own_scout_record(text, text) to authenticated;
+grant execute on function public.set_campogram_player_pipeline_status(uuid, text) to authenticated;
 
 grant usage on schema public to authenticated;
 grant select on public.seasons to authenticated;
@@ -101,6 +102,7 @@ grant select on public.players to authenticated;
 grant select on public.calendar_matches to authenticated;
 grant select on public.campograms to authenticated;
 grant select on public.campogram_players to authenticated;
+grant select on public.campogram_player_pipeline_events to authenticated;
 grant select on public.scouting_reports to authenticated;
 grant select on public.campogram_reports to authenticated;
 grant select on public.team_name_map to authenticated;
@@ -114,6 +116,7 @@ grant insert, update, delete on public.players to authenticated;
 grant insert, update, delete on public.calendar_matches to authenticated;
 grant insert, update, delete on public.campograms to authenticated;
 grant insert, update, delete on public.campogram_players to authenticated;
+grant insert, update, delete on public.campogram_player_pipeline_events to authenticated;
 grant insert, update, delete on public.scouting_reports to authenticated;
 grant insert, update, delete on public.campogram_reports to authenticated;
 grant insert, update, delete on public.team_name_map to authenticated;
@@ -181,6 +184,13 @@ on public.campogram_players
 for select
 to authenticated
 using (public.is_active_profile());
+
+drop policy if exists "campogram_pipeline_events_read_staff" on public.campogram_player_pipeline_events;
+create policy "campogram_pipeline_events_read_staff"
+on public.campogram_player_pipeline_events
+for select
+to authenticated
+using (public.can_manage_data());
 
 drop policy if exists "team_name_map_read_active_users" on public.team_name_map;
 create policy "team_name_map_read_active_users"
@@ -268,6 +278,14 @@ with check (public.can_manage_data());
 drop policy if exists "campogram_players_manage_staff" on public.campogram_players;
 create policy "campogram_players_manage_staff"
 on public.campogram_players
+for all
+to authenticated
+using (public.can_manage_data())
+with check (public.can_manage_data());
+
+drop policy if exists "campogram_pipeline_events_manage_staff" on public.campogram_player_pipeline_events;
+create policy "campogram_pipeline_events_manage_staff"
+on public.campogram_player_pipeline_events
 for all
 to authenticated
 using (public.can_manage_data())

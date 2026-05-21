@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 /**
  * Como useState pero persiste el valor en sessionStorage.
@@ -33,6 +34,7 @@ function useSessionState<T>(key: string, initial: T): [T, (value: T | ((prev: T)
 }
 import type {
   Campogram,
+  CampogramPipelineStatus,
   CampogramPlayer,
   CampogramReport,
   ObjectivePlayer,
@@ -115,6 +117,22 @@ const CONSENSUS_CLASS: Record<string, string> = {
   "Sin informes": "campogram-consensus--sin-informes",
 };
 
+const PIPELINE_STATUS_ORDER: CampogramPipelineStatus[] = ["lista", "tocado", "ofrecido", "rechazado"];
+
+const PIPELINE_STATUS_LABELS: Record<CampogramPipelineStatus, string> = {
+  lista: "Lista",
+  tocado: "Tocado",
+  ofrecido: "Ofrecido",
+  rechazado: "Rechazado",
+};
+
+const PIPELINE_STATUS_CLASS: Record<CampogramPipelineStatus, string> = {
+  lista: "campogram-pipeline-badge--lista",
+  tocado: "campogram-pipeline-badge--tocado",
+  ofrecido: "campogram-pipeline-badge--ofrecido",
+  rechazado: "campogram-pipeline-badge--rechazado",
+};
+
 const CATEGORY_LEGEND = [
   { label: "2ª DIV", className: "campogram-category--second" },
   { label: "1RFEF", className: "campogram-category--first-rfef" },
@@ -139,6 +157,27 @@ function reportCoverageColor(numerator: number, denominator: number) {
   const ratio = Math.max(0, Math.min(1, numerator / denominator));
   const hue = ratio * 120;
   return `hsl(${hue} 78% 42%)`;
+}
+
+function normalizePipelineStatus(value: string | null | undefined): CampogramPipelineStatus {
+  const normalized = normalizeKey(value || "") as CampogramPipelineStatus;
+  return PIPELINE_STATUS_ORDER.includes(normalized) ? normalized : "lista";
+}
+
+function pipelineStatusLabel(status: CampogramPipelineStatus) {
+  return PIPELINE_STATUS_LABELS[status] || PIPELINE_STATUS_LABELS.lista;
+}
+
+function pipelineStatusMeta(player: CampogramPlayer) {
+  const status = normalizePipelineStatus(player.pipeline_status);
+  const changedAt = player.pipeline_status_changed_at;
+  return {
+    status,
+    label: pipelineStatusLabel(status),
+    changedAt,
+    changedAtLabel: changedAt ? formatDate(changedAt) : "",
+    className: PIPELINE_STATUS_CLASS[status],
+  };
 }
 
 const UNIONISTAS_PLAYER_KEYS = new Set([
@@ -432,6 +471,9 @@ function mergeCampogramPlayer(base: CampogramPlayer, duplicate: CampogramPlayer)
     position: base.position || duplicate.position,
     agent: base.agent || duplicate.agent,
     foot: base.foot || duplicate.foot,
+    pipeline_status: base.pipeline_status || duplicate.pipeline_status || "lista",
+    pipeline_status_changed_at: base.pipeline_status_changed_at || duplicate.pipeline_status_changed_at,
+    pipeline_status_changed_by: base.pipeline_status_changed_by || duplicate.pipeline_status_changed_by,
     raw_data: {
       ...(duplicate.raw_data || {}),
       ...(base.raw_data || {}),
@@ -1312,13 +1354,64 @@ function PositionDistribution({
   );
 }
 
+function PipelineStatusBadge({
+  player,
+}: {
+  player: CampogramPlayer;
+}) {
+  const meta = pipelineStatusMeta(player);
+  return (
+    <span className={`campogram-pipeline-badge ${meta.className}`}>
+      {meta.label}
+      {meta.changedAtLabel ? <small>{meta.changedAtLabel}</small> : null}
+    </span>
+  );
+}
+
+function PipelineStatusControl({
+  disabled,
+  onChange,
+  player,
+}: {
+  disabled: boolean;
+  onChange: (nextStatus: CampogramPipelineStatus) => void;
+  player: CampogramPlayer;
+}) {
+  const meta = pipelineStatusMeta(player);
+  return (
+    <label className="campogram-pipeline-control">
+      <span>Seguimiento</span>
+      <div className="campogram-pipeline-control__row">
+        <select
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value as CampogramPipelineStatus)}
+          value={meta.status}
+        >
+          {PIPELINE_STATUS_ORDER.map((status) => (
+            <option key={status} value={status}>
+              {PIPELINE_STATUS_LABELS[status]}
+            </option>
+          ))}
+        </select>
+        <PipelineStatusBadge player={player} />
+      </div>
+    </label>
+  );
+}
+
 function PlayerDetailContent({
+  canManagePipeline,
+  isUpdatingPipeline,
+  onUpdatePipelineStatus,
   player,
   reports,
   status,
   objectiveMatches,
   objectivePlayers,
 }: {
+  canManagePipeline: boolean;
+  isUpdatingPipeline: boolean;
+  onUpdatePipelineStatus: (playerId: string, nextStatus: CampogramPipelineStatus) => Promise<void>;
   player: CampogramPlayer;
   reports: CampogramReport[];
   status: string;
@@ -1334,6 +1427,15 @@ function PlayerDetailContent({
 
   return (
     <div className="campogram-detail-content">
+      {canManagePipeline ? (
+        <div className="campogram-detail-toolbar">
+          <PipelineStatusControl
+            disabled={isUpdatingPipeline}
+            onChange={(nextStatus) => onUpdatePipelineStatus(player.id, nextStatus)}
+            player={player}
+          />
+        </div>
+      ) : null}
       <div className="campogram-detail__grid">
         <span><strong>Equipo</strong>{playerTeamDisplay(player)}</span>
         <span><strong>Categoría</strong>{displayText(player.category, rawText(player, "categoria"))}</span>
@@ -1387,12 +1489,18 @@ function PlayerDetailContent({
 }
 
 function PlayerDetail({
+  canManagePipeline,
+  isUpdatingPipeline,
+  onUpdatePipelineStatus,
   player,
   reports,
   status,
   objectiveMatches,
   objectivePlayers,
 }: {
+  canManagePipeline: boolean;
+  isUpdatingPipeline: boolean;
+  onUpdatePipelineStatus: (playerId: string, nextStatus: CampogramPipelineStatus) => Promise<void>;
   player: CampogramPlayer;
   reports: CampogramReport[];
   status: string;
@@ -1403,6 +1511,9 @@ function PlayerDetail({
     <details className="campogram-detail">
       <summary>Detalle | {player.player_name}</summary>
       <PlayerDetailContent
+        canManagePipeline={canManagePipeline}
+        isUpdatingPipeline={isUpdatingPipeline}
+        onUpdatePipelineStatus={onUpdatePipelineStatus}
         objectiveMatches={objectiveMatches}
         objectivePlayers={objectivePlayers}
         player={player}
@@ -1414,11 +1525,17 @@ function PlayerDetail({
 }
 
 function PlayerCard({
+  canManagePipeline,
+  isUpdatingPipeline,
+  onUpdatePipelineStatus,
   player,
   reports,
   objectiveMatches,
   objectivePlayers,
 }: {
+  canManagePipeline: boolean;
+  isUpdatingPipeline: boolean;
+  onUpdatePipelineStatus: (playerId: string, nextStatus: CampogramPipelineStatus) => Promise<void>;
   player: CampogramPlayer;
   reports: CampogramReport[];
   objectiveMatches: ObjectivePlayerMatch[];
@@ -1434,6 +1551,7 @@ function PlayerCard({
           {playerLoanNote(player) ? <small>{playerLoanNote(player)}</small> : null}
         </div>
         <div className="campogram-player-card__badges">
+          {canManagePipeline ? <PipelineStatusBadge player={player} /> : null}
           <em className={CONSENSUS_CLASS[status] || "campogram-consensus--sin-informes"}>{status}</em>
           <em>{player.category || "Sin categoría"}</em>
         </div>
@@ -1442,6 +1560,9 @@ function PlayerCard({
         Año nac. {player.birth_year || "-"} · {normalizePosition(player.position)} · Informes {reports.length}
       </small>
       <PlayerDetail
+        canManagePipeline={canManagePipeline}
+        isUpdatingPipeline={isUpdatingPipeline}
+        onUpdatePipelineStatus={onUpdatePipelineStatus}
         objectiveMatches={objectiveMatches}
         objectivePlayers={objectivePlayers}
         player={player}
@@ -1453,10 +1574,12 @@ function PlayerCard({
 }
 
 function CompactPlayerCard({
+  canManagePipeline,
   player,
   reports,
   onSelect,
 }: {
+  canManagePipeline: boolean;
   player: CampogramPlayer;
   reports: CampogramReport[];
   onSelect: (player: CampogramPlayer) => void;
@@ -1473,18 +1596,25 @@ function CompactPlayerCard({
       <span className="campogram-compact-card__meta">
         {birthYearWithAge(player.birth_year)} · {player.category || "Sin categoría"}
       </span>
+      {canManagePipeline ? <PipelineStatusBadge player={player} /> : null}
       <em className={CONSENSUS_CLASS[status] || "campogram-consensus--sin-informes"}>{status}</em>
     </button>
   );
 }
 
 function PositionPanel({
+  canManagePipeline,
+  isUpdatingPipeline,
+  onUpdatePipelineStatus,
   players,
   position,
   reportMap,
   objectiveMatches,
   objectivePlayers,
 }: {
+  canManagePipeline: boolean;
+  isUpdatingPipeline: boolean;
+  onUpdatePipelineStatus: (playerId: string, nextStatus: CampogramPipelineStatus) => Promise<void>;
   players: CampogramPlayer[];
   position: string;
   reportMap: Map<string, CampogramReport[]>;
@@ -1501,7 +1631,10 @@ function PositionPanel({
       {positionPlayers.length ? (
         positionPlayers.map((player) => (
           <PlayerCard
+            canManagePipeline={canManagePipeline}
+            isUpdatingPipeline={isUpdatingPipeline}
             key={player.id}
+            onUpdatePipelineStatus={onUpdatePipelineStatus}
             objectiveMatches={objectiveMatches}
             objectivePlayers={objectivePlayers}
             player={player}
@@ -1516,11 +1649,13 @@ function PositionPanel({
 }
 
 function PitchPositionPanel({
+  canManagePipeline,
   players,
   position,
   reportMap,
   onSelectPlayer,
 }: {
+  canManagePipeline: boolean;
   players: CampogramPlayer[];
   position: string;
   reportMap: Map<string, CampogramReport[]>;
@@ -1545,6 +1680,7 @@ function PitchPositionPanel({
         {positionPlayers.length ? (
           positionPlayers.map((player) => (
             <CompactPlayerCard
+              canManagePipeline={canManagePipeline}
               key={player.id}
               onSelect={onSelectPlayer}
               player={player}
@@ -1560,12 +1696,18 @@ function PitchPositionPanel({
 }
 
 function CampogramPitch({
+  canManagePipeline,
+  isUpdatingPipeline,
+  onUpdatePipelineStatus,
   players,
   reportMap,
   onSelectPlayer,
   objectiveMatches,
   objectivePlayers,
 }: {
+  canManagePipeline: boolean;
+  isUpdatingPipeline: boolean;
+  onUpdatePipelineStatus: (playerId: string, nextStatus: CampogramPipelineStatus) => Promise<void>;
   players: CampogramPlayer[];
   reportMap: Map<string, CampogramReport[]>;
   onSelectPlayer: (player: CampogramPlayer) => void;
@@ -1590,6 +1732,7 @@ function CampogramPitch({
               <div className={`campogram-pitch-line ${line.className}`} key={line.className}>
                 {line.positions.map((position) => (
                   <PitchPositionPanel
+                    canManagePipeline={canManagePipeline}
                     key={position}
                     onSelectPlayer={onSelectPlayer}
                     players={players}
@@ -1634,7 +1777,10 @@ function CampogramPitch({
               {row.map((position, columnIndex) =>
                 position ? (
                   <PositionPanel
+                    canManagePipeline={canManagePipeline}
+                    isUpdatingPipeline={isUpdatingPipeline}
                     key={position}
+                    onUpdatePipelineStatus={onUpdatePipelineStatus}
                     objectiveMatches={objectiveMatches}
                     objectivePlayers={objectivePlayers}
                     players={players}
@@ -1658,7 +1804,10 @@ function CampogramPitch({
           <div className="campogram-extra-grid">
             {extraPositions.map((position) => (
               <PositionPanel
+                canManagePipeline={canManagePipeline}
+                isUpdatingPipeline={isUpdatingPipeline}
                 key={position}
+                onUpdatePipelineStatus={onUpdatePipelineStatus}
                 objectiveMatches={objectiveMatches}
                 objectivePlayers={objectivePlayers}
                 players={players}
@@ -1681,6 +1830,7 @@ export function CampogramsView({
   objectivePlayers,
   focusPlayerId,
   focusPlayerName,
+  onUpdateCampogramPlayer,
   profile,
 }: {
   campograms: Campogram[];
@@ -1690,11 +1840,13 @@ export function CampogramsView({
   objectivePlayers: ObjectivePlayer[];
   focusPlayerId?: string;
   focusPlayerName?: string;
+  onUpdateCampogramPlayer: (playerId: string, patch: Partial<CampogramPlayer>) => void;
   profile?: UserProfile;
 }) {
   const [selectedCampogramId, setSelectedCampogramId] = useSessionState<string>("camp:selectedCampogramId", "");
   const [selectedPlayerId, setSelectedPlayerId] = useSessionState<string | null>("camp:selectedPlayerId", null);
   const [selectedAgencyKey, setSelectedAgencyKey] = useSessionState<string>("camp:selectedAgencyKey", "");
+  const [pipelineUpdatingPlayerId, setPipelineUpdatingPlayerId] = useState<string | null>(null);
 
   const visibleCampogramPlayers = useMemo(
     () => dedupeCampogramPlayers(campogramPlayers),
@@ -1740,6 +1892,7 @@ export function CampogramsView({
   const sinConsenso = selectedStatuses.filter((status) => status === "Sin consenso").length;
   const allStatuses = visibleCampogramPlayers.map((player) => playerStatus(player, reportMap));
   const isScoutScope = profile?.role === "scout";
+  const canManagePipeline = profile?.role === "admin" || profile?.role === "coordinator";
   const campogramNameById = useMemo(
     () => new Map(campograms.map((campogram) => [campogram.id, campogram.name])),
     [campograms],
@@ -1799,6 +1952,32 @@ export function CampogramsView({
   const totalVisiblePlayers = visibleCampogramPlayers.length;
   const visiblePlayersWithReports = visibleCampogramPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
   const visiblePlayersWithoutReports = allStatuses.filter((status) => status === "Sin informes").length;
+
+  const handlePipelineStatusChange = useCallback(
+    async (playerId: string, nextStatus: CampogramPipelineStatus) => {
+      if (!canManagePipeline) return;
+      try {
+        setPipelineUpdatingPlayerId(playerId);
+        const { data, error } = await supabase.rpc("set_campogram_player_pipeline_status", {
+          next_status: nextStatus,
+          target_player_id: playerId,
+        });
+        if (error) throw error;
+        const updated = Array.isArray(data) ? data[0] : data;
+        onUpdateCampogramPlayer(playerId, {
+          pipeline_status: normalizePipelineStatus(updated?.pipeline_status),
+          pipeline_status_changed_at: updated?.pipeline_status_changed_at || null,
+          pipeline_status_changed_by: updated?.pipeline_status_changed_by || null,
+        });
+      } catch (error) {
+        console.error("No se pudo actualizar el seguimiento del campograma", error);
+        window.alert("No se pudo guardar el estado de seguimiento del jugador.");
+      } finally {
+        setPipelineUpdatingPlayerId(null);
+      }
+    },
+    [canManagePipeline, onUpdateCampogramPlayer],
+  );
 
   return (
     <section className="campograms-view">
@@ -1889,7 +2068,10 @@ export function CampogramsView({
         <span>{selectedPlayers.length} jugadores</span>
       </div>
       <CampogramPitch
+        canManagePipeline={canManagePipeline}
+        isUpdatingPipeline={pipelineUpdatingPlayerId !== null}
         onSelectPlayer={(player) => setSelectedPlayerId(player.id)}
+        onUpdatePipelineStatus={handlePipelineStatusChange}
         players={selectedPlayers}
         reportMap={reportMap}
         objectiveMatches={objectiveMatches}
@@ -1982,6 +2164,9 @@ export function CampogramsView({
               <button onClick={() => setSelectedPlayerId(null)} type="button">Cerrar</button>
             </header>
             <PlayerDetailContent
+              canManagePipeline={canManagePipeline}
+              isUpdatingPipeline={pipelineUpdatingPlayerId === selectedPlayer.id}
+              onUpdatePipelineStatus={handlePipelineStatusChange}
               objectiveMatches={objectiveMatches}
               objectivePlayers={objectivePlayers}
               player={selectedPlayer}

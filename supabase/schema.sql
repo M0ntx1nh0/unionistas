@@ -159,6 +159,10 @@ create table if not exists public.campogram_players (
     position text,
     agent text,
     foot text,
+    pipeline_status text not null default 'lista'
+        check (pipeline_status in ('lista', 'tocado', 'ofrecido', 'rechazado')),
+    pipeline_status_changed_at timestamptz,
+    pipeline_status_changed_by uuid references public.profiles(id) on delete set null,
     source_system text not null default 'google_sheets_campogram_base',
     source_spreadsheet_id text,
     source_worksheet_name text,
@@ -167,6 +171,19 @@ create table if not exists public.campogram_players (
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     unique (campogram_id, source_system, source_row_id)
+);
+
+create table if not exists public.campogram_player_pipeline_events (
+    id uuid primary key default gen_random_uuid(),
+    campogram_player_id uuid not null references public.campogram_players(id) on delete cascade,
+    previous_status text not null
+        check (previous_status in ('lista', 'tocado', 'ofrecido', 'rechazado')),
+    new_status text not null
+        check (new_status in ('lista', 'tocado', 'ofrecido', 'rechazado')),
+    changed_at timestamptz not null default now(),
+    changed_by uuid references public.profiles(id) on delete set null,
+    reverted_at timestamptz,
+    reverted_by uuid references public.profiles(id) on delete set null
 );
 
 create table if not exists public.campogram_reports (
@@ -253,6 +270,10 @@ create table if not exists public.objective_players (
     foot text,
     height numeric,
     weight numeric,
+    primary_profile text,
+    secondary_profile text,
+    profile_family text,
+    profile_score_map jsonb not null default '{}'::jsonb,
     metrics jsonb not null default '{}'::jsonb,
     raw_data jsonb not null default '{}'::jsonb,
     created_at timestamptz not null default now(),
@@ -297,6 +318,120 @@ create table if not exists public.audit_log (
     created_at timestamptz not null default now()
 );
 
+create or replace function public.set_campogram_player_pipeline_status(
+    target_player_id uuid,
+    next_status text
+)
+returns table (
+    pipeline_status text,
+    pipeline_status_changed_at timestamptz,
+    pipeline_status_changed_by uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+    current_player public.campogram_players%rowtype;
+    latest_event public.campogram_player_pipeline_events%rowtype;
+    normalized_next_status text;
+    now_ts timestamptz := now();
+begin
+    if not public.can_manage_data() then
+        raise exception 'forbidden';
+    end if;
+
+    normalized_next_status := lower(trim(coalesce(next_status, '')));
+    if normalized_next_status not in ('lista', 'tocado', 'ofrecido', 'rechazado') then
+        raise exception 'invalid_pipeline_status';
+    end if;
+
+    select *
+    into current_player
+    from public.campogram_players
+    where id = target_player_id
+    for update;
+
+    if not found then
+        raise exception 'campogram_player_not_found';
+    end if;
+
+    current_player.pipeline_status := coalesce(current_player.pipeline_status, 'lista');
+
+    if current_player.pipeline_status = normalized_next_status then
+        return query
+        select
+            current_player.pipeline_status,
+            current_player.pipeline_status_changed_at,
+            current_player.pipeline_status_changed_by;
+        return;
+    end if;
+
+    if normalized_next_status = 'lista'
+       and current_player.pipeline_status <> 'lista'
+       and current_player.pipeline_status_changed_at is not null
+       and now_ts - current_player.pipeline_status_changed_at < interval '1 hour' then
+        select *
+        into latest_event
+        from public.campogram_player_pipeline_events
+        where campogram_player_id = target_player_id
+          and reverted_at is null
+        order by changed_at desc
+        limit 1;
+
+        if found
+           and latest_event.previous_status = 'lista'
+           and latest_event.new_status = current_player.pipeline_status then
+            update public.campogram_player_pipeline_events
+            set reverted_at = now_ts,
+                reverted_by = auth.uid()
+            where id = latest_event.id;
+
+            update public.campogram_players
+            set pipeline_status = 'lista',
+                pipeline_status_changed_at = null,
+                pipeline_status_changed_by = null,
+                updated_at = now_ts
+            where id = target_player_id;
+
+            return query
+            select
+                'lista'::text,
+                null::timestamptz,
+                null::uuid;
+            return;
+        end if;
+    end if;
+
+    insert into public.campogram_player_pipeline_events (
+        campogram_player_id,
+        previous_status,
+        new_status,
+        changed_at,
+        changed_by
+    ) values (
+        target_player_id,
+        current_player.pipeline_status,
+        normalized_next_status,
+        now_ts,
+        auth.uid()
+    );
+
+    update public.campogram_players
+    set pipeline_status = normalized_next_status,
+        pipeline_status_changed_at = now_ts,
+        pipeline_status_changed_by = auth.uid(),
+        updated_at = now_ts
+    where id = target_player_id;
+
+    return query
+    select
+        normalized_next_status,
+        now_ts,
+        auth.uid();
+end;
+$$;
+
 create index if not exists idx_profiles_role
     on public.profiles (role, active);
 
@@ -329,6 +464,12 @@ create index if not exists idx_campogram_players_campogram
 
 create index if not exists idx_campogram_players_player
     on public.campogram_players (season_id, normalized_player_name);
+
+create index if not exists idx_campogram_players_pipeline
+    on public.campogram_players (pipeline_status, pipeline_status_changed_at desc);
+
+create index if not exists idx_campogram_pipeline_events_player
+    on public.campogram_player_pipeline_events (campogram_player_id, changed_at desc);
 
 create index if not exists idx_campogram_reports_player
     on public.campogram_reports (season_id, normalized_player_name);
@@ -368,6 +509,7 @@ alter table public.scouting_reports enable row level security;
 alter table public.calendar_matches enable row level security;
 alter table public.campograms enable row level security;
 alter table public.campogram_players enable row level security;
+alter table public.campogram_player_pipeline_events enable row level security;
 alter table public.campogram_reports enable row level security;
 alter table public.team_name_map enable row level security;
 alter table public.objective_players enable row level security;
