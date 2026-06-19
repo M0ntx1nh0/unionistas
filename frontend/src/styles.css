@@ -2015,12 +2015,20 @@ p {
   gap: 0.07rem;
   min-height: 60px;
   padding: 0.3rem 0.36rem;
+  position: relative;
   text-align: left;
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
   width: 100%;
+}
+
+.campogram-compact-card .campogram-category-dot {
+  height: 0.62rem;
+  right: 0.34rem;
+  top: 0.34rem;
+  width: 0.62rem;
 }
 
 .campogram-compact-card:hover {
@@ -2234,6 +2242,35 @@ p {
   display: grid;
   gap: 0.55rem;
   padding: 0.75rem;
+  position: relative;
+}
+
+.campogram-player-card.campogram-card-followup--lista,
+.campogram-compact-card.campogram-card-followup--lista {
+  background: linear-gradient(135deg, rgba(212, 212, 212, 0.99), rgba(246, 246, 246, 0.98) 62%) !important;
+  border: 2px solid #8d8d85 !important;
+  border-left-color: #8d8d85 !important;
+}
+
+.campogram-player-card.campogram-card-followup--tocado,
+.campogram-compact-card.campogram-card-followup--tocado {
+  background: linear-gradient(135deg, rgba(176, 238, 191, 0.99), rgba(242, 255, 245, 0.98) 62%) !important;
+  border: 2px solid #1f8d3f !important;
+  border-left-color: #1f8d3f !important;
+}
+
+.campogram-player-card.campogram-card-followup--ofrecido,
+.campogram-compact-card.campogram-card-followup--ofrecido {
+  background: linear-gradient(135deg, rgba(255, 205, 150, 0.99), rgba(255, 246, 237, 0.98) 62%) !important;
+  border: 2px solid #eb7a00 !important;
+  border-left-color: #eb7a00 !important;
+}
+
+.campogram-player-card.campogram-card-followup--rechazado,
+.campogram-compact-card.campogram-card-followup--rechazado {
+  background: linear-gradient(135deg, rgba(255, 188, 188, 0.99), rgba(255, 242, 242, 0.98) 62%) !important;
+  border: 2px solid #d63131 !important;
+  border-left-color: #d63131 !important;
 }
 
 .campogram-player-card__top {
@@ -2262,6 +2299,7 @@ p {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  padding-right: 0.6rem;
 }
 
 .campogram-player-card__badges .campogram-pipeline-badge {
@@ -2282,27 +2320,68 @@ p {
 }
 
 .campogram-category--second {
-  background: #ffe7ee;
+  background: #ff5f95;
 }
 
 .campogram-category--first-rfef {
-  background: #dff9d4;
+  background: #73d35f;
 }
 
 .campogram-category--second-rfef {
-  background: #dcf8fb;
+  background: #46cde2;
 }
 
 .campogram-category--lower {
-  background: #fff0d8;
+  background: #f2b04f;
 }
 
 .campogram-category--foreign {
-  background: #fff4ba;
+  background: #e5cf2c;
 }
 
 .campogram-category--other {
-  background: #f3f3ef;
+  background: #9e9e95;
+}
+
+.campogram-category-dot {
+  border: 1px solid rgba(10, 10, 10, 0.16);
+  border-radius: 999px;
+  height: 0.78rem;
+  position: absolute;
+  right: 0.48rem;
+  top: 0.48rem;
+  width: 0.78rem;
+  z-index: 1;
+}
+
+.campogram-category-dot.campogram-category--second {
+  background: #ff5f95;
+  border-color: rgba(143, 17, 62, 0.3);
+}
+
+.campogram-category-dot.campogram-category--first-rfef {
+  background: #73d35f;
+  border-color: rgba(19, 102, 6, 0.28);
+}
+
+.campogram-category-dot.campogram-category--second-rfef {
+  background: #46cde2;
+  border-color: rgba(11, 98, 114, 0.28);
+}
+
+.campogram-category-dot.campogram-category--lower {
+  background: #f2b04f;
+  border-color: rgba(140, 84, 7, 0.28);
+}
+
+.campogram-category-dot.campogram-category--foreign {
+  background: #e5cf2c;
+  border-color: rgba(122, 108, 10, 0.28);
+}
+
+.campogram-category-dot.campogram-category--other {
+  background: #9e9e95;
+  border-color: rgba(67, 67, 61, 0.28);
 }
 
 .campogram-consensus--fichar {
@@ -4678,6 +4757,48 @@ p {
   font-size: 0.72rem;
   font-weight: 700;
   margin-top: -0.2rem;
+}
+
+.campogram-title-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.9rem;
+}
+
+.campogram-pdf-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.campogram-pdf-actions__mode {
+  color: #f5f5f5;
+  margin-bottom: 0;
+  max-width: 210px;
+  min-width: 190px;
+}
+
+.campogram-pdf-actions__mode select {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f5f5f5;
+  min-height: 2.7rem;
+}
+
+.campogram-pdf-actions a {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid rgba(10, 10, 10, 0.12);
+  border-radius: 999px;
+  box-shadow: 0 12px 28px rgba(10, 10, 10, 0.08);
+  color: #111111;
+  display: inline-flex;
+  font-weight: 950;
+  justify-content: center;
+  min-height: 2.7rem;
+  padding: 0.65rem 1.15rem;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 @media print {

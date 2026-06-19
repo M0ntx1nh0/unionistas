@@ -550,3 +550,67 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - Regla especial aprobada:
   - si un jugador pasa de `Lista` a otro estado y vuelve a `Lista` antes de 1 hora, el cambio se anula
   - en ese caso el jugador vuelve a quedar como `Lista` sin fecha consolidada de cambio
+
+## 15. Exportación PDF de Campogramas
+
+- `Campogramas` incorpora una exportación PDF pensada solo para `admin` y `coordinator`; los `scouts` no deben ver el selector ni el botón de descarga.
+- La exportación reutiliza `@react-pdf/renderer`, igual que el `Dashboard`, pero con estructura propia para Campogramas.
+- Hay tres modos de informe:
+  - `Clásico`
+  - `Situación jugador`
+  - `Situación scout`
+- Los tres comparten una estructura fija:
+  - `Portada`
+  - `Índice`
+  - `Situación actual`
+  - una página individual por campograma
+- La portada debe incluir:
+  - escudo de Unionistas en la parte superior derecha
+  - título `Informe Área de Scouting`
+  - subtítulo `CAMPOGRAMAS`
+  - línea `Secretaría Técnica USCF`
+  - fecha de impresión
+- El índice va en la segunda página y muestra números de página reales.
+- Se ha fijado `25` filas máximas por página de índice para que el caso `Situación actual + 24 campogramas` entre en una sola página; si alguna modalidad supera ese volumen, el índice se pagina automáticamente.
+- El bloque `Situación actual` es común a los tres informes y resume:
+  - total de campogramas
+  - total de jugadores
+  - jugadores con informe
+  - jugadores sin informe
+  - jugadores sin consenso
+  - además de un resumen visual de los seis campogramas
+- En `Clásico`, cada página de campograma muestra el conjunto completo de jugadores.
+- En `Situación jugador`, se generan páginas por `campograma + estado pipeline`:
+  - `Lista`
+  - `Tocado`
+  - `Ofrecido`
+  - `Rechazado`
+- En `Situación scout`, se generan páginas por `campograma + valoración scout`:
+  - `Fichar`
+  - `Duda`
+  - `Seguir viendo`
+  - `Descartar`
+  - `Sin consenso`
+  - `Sin informes`
+- El título de cada página individual debe dejar claro a qué referencia responde:
+  - nombre del campograma
+  - y, cuando aplica, la acción o la valoración.
+
+## 16. Color visual de tarjetas en Campogramas
+
+- Dentro del campo visual de `Campogramas`, el color base de cada tarjeta de jugador ya no depende de la `categoría`.
+- La tarjeta se colorea por `seguimiento`:
+  - `Lista`: gris
+  - `Tocado`: verde
+  - `Ofrecido`: naranja
+  - `Rechazado`: rojo
+- La pastilla de seguimiento se mantiene como elemento independiente dentro de la tarjeta.
+- También se mantiene la fecha del último cambio de seguimiento cuando exista.
+- La `categoría` ya no se escribe dentro de la tarjeta; se representa con un punto de color en la esquina superior derecha, apoyándose en la leyenda global inferior.
+- Ese punto de categoría debe usar colores más saturados y diferenciados que los fondos antiguos, para que la categoría se identifique de un vistazo.
+- Dentro de cada posición del campograma, las tarjetas se ordenan por `seguimiento` en este orden:
+  - `Tocado`
+  - `Ofrecido`
+  - `Lista`
+  - `Rechazado`
+- A igualdad de seguimiento, el desempate sigue siendo alfabético por nombre del jugador.

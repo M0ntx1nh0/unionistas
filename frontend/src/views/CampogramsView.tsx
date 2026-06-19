@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Document as PdfDocument,
+  Image as PdfImage,
+  Page as PdfPage,
+  PDFDownloadLink,
+  StyleSheet as PdfStyleSheet,
+  Text as PdfText,
+  View as PdfView,
+} from "@react-pdf/renderer";
 import { supabase } from "../lib/supabase";
 
 /**
@@ -142,6 +151,496 @@ const CATEGORY_LEGEND = [
   { label: "Otra", className: "campogram-category--other" },
 ];
 
+const CAMPROGRAMS_PDF_ACCENT = "#e7d21a";
+const CAMPROGRAMS_PDF_BLACK = "#0a0a0a";
+const CAMPROGRAMS_PDF_MUTED = "#5a5a55";
+const UNIONISTAS_BADGE_SRC = "/escudo/unionistar.png";
+const CAMPROGRAMS_PDF_INDEX_ROWS_PER_PAGE = 32;
+
+type CampogramsPdfMode = "clasico" | "situacion_jugador" | "situacion_scout";
+
+const CAMPROGRAMS_PDF_MODE_LABELS: Record<CampogramsPdfMode, string> = {
+  clasico: "Clásico",
+  situacion_jugador: "Situación jugador",
+  situacion_scout: "Situación scout",
+};
+
+const campogramsPdfStyles = PdfStyleSheet.create({
+  cover: {
+    alignItems: "center",
+    backgroundColor: "#f6f6f2",
+    color: CAMPROGRAMS_PDF_BLACK,
+    display: "flex",
+    fontFamily: "Helvetica",
+    justifyContent: "center",
+    padding: 40,
+    position: "relative",
+  },
+  coverStrip: {
+    backgroundColor: CAMPROGRAMS_PDF_BLACK,
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    top: 0,
+    width: 54,
+  },
+  coverAccent: {
+    backgroundColor: CAMPROGRAMS_PDF_ACCENT,
+    bottom: 0,
+    left: 54,
+    position: "absolute",
+    top: 0,
+    width: 6,
+  },
+  coverLogo: {
+    height: 78,
+    position: "absolute",
+    right: 54,
+    top: 42,
+    width: 78,
+  },
+  coverWatermark: {
+    height: 230,
+    opacity: 0.05,
+    position: "absolute",
+    width: 230,
+  },
+  coverTitle: {
+    fontSize: 31,
+    fontWeight: 900,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  coverSubtitle: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 17,
+    fontWeight: 700,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  coverMeta: {
+    color: "#7b7110",
+    fontSize: 11,
+    fontWeight: 700,
+    marginTop: 18,
+    textAlign: "center",
+  },
+  page: {
+    backgroundColor: "#f6f6f2",
+    color: CAMPROGRAMS_PDF_BLACK,
+    fontFamily: "Helvetica",
+    padding: 18,
+    position: "relative",
+  },
+  pageWatermark: {
+    height: 230,
+    left: 306,
+    opacity: 0.035,
+    position: "absolute",
+    top: 150,
+    width: 230,
+  },
+  header: {
+    alignItems: "center",
+    backgroundColor: CAMPROGRAMS_PDF_BLACK,
+    borderRadius: 12,
+    color: "#ffffff",
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    padding: 10,
+  },
+  headerLeft: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  headerRight: {
+    alignItems: "center",
+    display: "flex",
+    flexDirection: "row",
+    gap: 10,
+  },
+  headerTitle: {
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  headerSubtitle: {
+    color: CAMPROGRAMS_PDF_ACCENT,
+    fontSize: 6,
+    fontWeight: 700,
+    letterSpacing: 1.4,
+    marginTop: 3,
+    textTransform: "uppercase",
+  },
+  headerDate: {
+    color: CAMPROGRAMS_PDF_ACCENT,
+    fontSize: 7,
+    fontWeight: 700,
+  },
+  headerLogo: {
+    height: 24,
+    width: 24,
+  },
+  footer: {
+    bottom: 10,
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 7,
+    position: "absolute",
+    right: 24,
+  },
+  pageNumber: {
+    bottom: 10,
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 7,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    textAlign: "center",
+  },
+  indexTitle: {
+    fontSize: 18,
+    fontWeight: 900,
+    marginBottom: 12,
+  },
+  indexRows: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  indexRow: {
+    alignItems: "center",
+    borderBottomColor: "rgba(10,10,10,0.08)",
+    borderBottomWidth: 1,
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 4,
+  },
+  indexRowLabel: {
+    fontSize: 9,
+    fontWeight: 700,
+    maxWidth: "88%",
+  },
+  indexRowPage: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 9,
+    fontWeight: 900,
+  },
+  metricsRow: {
+    display: "flex",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+  metricBox: {
+    backgroundColor: "#ffffff",
+    borderLeftColor: CAMPROGRAMS_PDF_ACCENT,
+    borderLeftWidth: 4,
+    borderRadius: 12,
+    flex: 1,
+    padding: 6,
+  },
+  metricLabel: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 7,
+    fontWeight: 700,
+    marginBottom: 6,
+  },
+  metricValue: {
+    fontSize: 18,
+    fontWeight: 900,
+  },
+  overviewGrid: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  overviewCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    minHeight: 112,
+    padding: 6,
+    width: "32.2%",
+  },
+  overviewCardFullWidth: {
+    width: "100%",
+  },
+  overviewCardHead: {
+    alignItems: "flex-start",
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  overviewCardTitle: {
+    fontSize: 8,
+    fontWeight: 900,
+    maxWidth: "72%",
+  },
+  overviewCardStats: {
+    alignItems: "flex-end",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+  },
+  overviewCardStat: {
+    fontSize: 5.5,
+    fontWeight: 900,
+  },
+  positionSummaryGrid: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 2,
+    marginBottom: 4,
+  },
+  positionSummaryCell: {
+    alignItems: "center",
+    backgroundColor: "#f3f3ef",
+    borderRadius: 8,
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 26,
+    padding: 2,
+    width: "16.7%",
+  },
+  overviewIndicators: {
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+  },
+  overviewIndicator: {
+    backgroundColor: "#f3f3ef",
+    borderLeftColor: CAMPROGRAMS_PDF_ACCENT,
+    borderLeftWidth: 2,
+    borderRadius: 8,
+    paddingBottom: 3,
+    paddingLeft: 4,
+    paddingRight: 4,
+    paddingTop: 3,
+    width: "48.5%",
+  },
+  overviewIndicatorLabel: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 4.8,
+    fontWeight: 700,
+    marginBottom: 2,
+  },
+  overviewIndicatorValue: {
+    fontSize: 6.5,
+    fontWeight: 900,
+  },
+  positionSummaryLabel: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 5,
+    fontWeight: 900,
+    marginBottom: 2,
+    textAlign: "center",
+  },
+  positionSummaryPercent: {
+    fontSize: 5,
+    fontWeight: 900,
+    marginBottom: 1,
+  },
+  positionSummaryTotal: {
+    fontSize: 6,
+    fontWeight: 900,
+  },
+  sectionTag: {
+    alignSelf: "flex-start",
+    backgroundColor: CAMPROGRAMS_PDF_ACCENT,
+    borderRadius: 999,
+    fontSize: 8,
+    fontWeight: 900,
+    marginBottom: 8,
+    paddingBottom: 4,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingTop: 4,
+  },
+  campogramTitle: {
+    fontSize: 18,
+    fontWeight: 900,
+    marginBottom: 4,
+  },
+  campogramSubtitle: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 10,
+    fontWeight: 700,
+    marginBottom: 10,
+  },
+  sectionHeader: {
+    alignItems: "center",
+    backgroundColor: CAMPROGRAMS_PDF_BLACK,
+    borderRadius: 12,
+    color: "#ffffff",
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingBottom: 8,
+    paddingLeft: 12,
+    paddingRight: 12,
+    paddingTop: 8,
+  },
+  sectionHeaderTitle: {
+    color: "#ffffff",
+    fontSize: 16,
+    fontWeight: 900,
+  },
+  sectionHeaderCount: {
+    color: CAMPROGRAMS_PDF_ACCENT,
+    fontSize: 11,
+    fontWeight: 900,
+  },
+  sectionSubheader: {
+    alignItems: "center",
+    backgroundColor: CAMPROGRAMS_PDF_BLACK,
+    borderRadius: 10,
+    color: "#ffffff",
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingBottom: 7,
+    paddingLeft: 10,
+    paddingRight: 10,
+    paddingTop: 7,
+  },
+  sectionSubheaderTitle: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: 900,
+  },
+  legendWrap: {
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    marginTop: 4,
+    padding: 6,
+  },
+  legendTitle: {
+    fontSize: 8,
+    fontWeight: 900,
+  },
+  legendItems: {
+    alignItems: "center",
+    display: "flex",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "center",
+  },
+  legendItem: {
+    alignItems: "center",
+    display: "flex",
+    flexDirection: "row",
+    gap: 4,
+  },
+  legendDot: {
+    borderRadius: 999,
+    height: 6,
+    width: 6,
+  },
+  legendLabel: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 6.5,
+    fontWeight: 700,
+  },
+  miniBarsWrap: {
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    marginBottom: 8,
+    padding: 6,
+  },
+  pitchWrap: {
+    backgroundColor: "#1f7a3a",
+    borderRadius: 16,
+    minHeight: 258,
+    padding: 8,
+    position: "relative",
+  },
+  pitchRows: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  fieldRows: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+  },
+  fieldRow: {
+    display: "flex",
+    flexDirection: "row",
+    gap: 5,
+  },
+  fieldCell: {
+    backgroundColor: "rgba(255,255,255,0.84)",
+    borderColor: "rgba(255,255,255,0.65)",
+    borderWidth: 1,
+    borderRadius: 12,
+    flex: 1,
+    minHeight: 44,
+    padding: 4,
+  },
+  fieldSpacer: {
+    flex: 1,
+  },
+  fieldCellHead: {
+    alignItems: "center",
+    display: "flex",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  fieldCellTitle: {
+    fontSize: 7.2,
+    fontWeight: 900,
+  },
+  fieldCellTotal: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 6.1,
+    fontWeight: 900,
+  },
+  fieldPlayers: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+  },
+  fieldPlayersColumns: {
+    display: "flex",
+    flexDirection: "row",
+    gap: 3,
+  },
+  fieldPlayersColumn: {
+    display: "flex",
+    flexDirection: "column",
+    flex: 1,
+    gap: 1,
+  },
+  fieldPlayer: {
+    fontSize: 5.1,
+    fontWeight: 700,
+  },
+  fieldPlayerMeta: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 4.4,
+    marginTop: 0,
+  },
+  emptyCell: {
+    color: CAMPROGRAMS_PDF_MUTED,
+    fontSize: 7,
+    fontStyle: "italic",
+  },
+});
+
 const PERCENTAGE_FORMATTER = new Intl.NumberFormat("es-ES", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
@@ -168,6 +667,15 @@ function pipelineStatusLabel(status: CampogramPipelineStatus) {
   return PIPELINE_STATUS_LABELS[status] || PIPELINE_STATUS_LABELS.lista;
 }
 
+function formatPipelineStatusDate(value: string | null) {
+  if (!value) return "";
+  return new Intl.DateTimeFormat("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(new Date(value));
+}
+
 function pipelineStatusMeta(player: CampogramPlayer) {
   const status = normalizePipelineStatus(player.pipeline_status);
   const changedAt = player.pipeline_status_changed_at;
@@ -175,9 +683,14 @@ function pipelineStatusMeta(player: CampogramPlayer) {
     status,
     label: pipelineStatusLabel(status),
     changedAt,
-    changedAtLabel: changedAt ? formatDate(changedAt) : "",
+    changedAtLabel: changedAt ? formatPipelineStatusDate(changedAt) : "",
     className: PIPELINE_STATUS_CLASS[status],
   };
+}
+
+function pipelineCardClass(player: CampogramPlayer) {
+  const status = normalizePipelineStatus(player.pipeline_status);
+  return `campogram-card-followup--${status}`;
 }
 
 const UNIONISTAS_PLAYER_KEYS = new Set([
@@ -377,12 +890,20 @@ function playerAgency(player: CampogramPlayer) {
   return normalizedAgencyValue(firstText(player.agent, rawText(player, "agente")));
 }
 
+function playerTeamRaw(player: CampogramPlayer) {
+  return firstText(rawText(player, "equipo_actual"), player.team_name, rawText(player, "situacion_equipo"));
+}
+
 function playerTeamDisplay(player: CampogramPlayer) {
-  return displayText(rawText(player, "equipo_actual"), player.team_name, rawText(player, "situacion_equipo"));
+  return displayText(playerTeamRaw(player));
 }
 
 function playerLoanOwnerDisplay(player: CampogramPlayer) {
   return displayText(player.owner_team_name, rawText(player, "equipo_propietario"));
+}
+
+function resolvedPlayerTeamKey(player: CampogramPlayer) {
+  return normalizeTeamKey(playerTeamRaw(player));
 }
 
 function playerLoanNote(player: CampogramPlayer) {
@@ -454,7 +975,7 @@ function campogramPlayerIdentity(player: CampogramPlayer) {
   return [
     player.campogram_id,
     normalizeKey(player.player_name),
-    normalizeKey(player.team_name),
+    resolvedPlayerTeamKey(player),
     normalizePosition(player.position),
     textValue(player.birth_year),
   ].join("|");
@@ -560,15 +1081,15 @@ function reportsForPlayer(
   canonicalIdByPlayerId: Map<string, string>,
 ) {
   const playerKey = normalizeKey(player.player_name);
-  const playerTeamKey = normalizeKey(player.team_name);
+  const playerTeamKey = resolvedPlayerTeamKey(player);
   return reports.filter((report) => {
     if (report.campogram_player_id) {
       const canonicalReportPlayerId = canonicalIdByPlayerId.get(report.campogram_player_id) || report.campogram_player_id;
       if (canonicalReportPlayerId === player.id) return true;
     }
 
-    const reportTeamKey = normalizeKey(report.team_name);
-    const sameTeam = !playerTeamKey || !reportTeamKey || playerTeamKey === reportTeamKey;
+    const reportTeamKey = normalizeTeamKey(firstText(report.team_name, rawText(report, "equipo_actual"), rawText(report, "equipo")));
+    const sameTeam = !playerTeamKey || !reportTeamKey || teamTokenOverlap(playerTeamKey, reportTeamKey) >= 0.4;
     return report.campogram_id === player.campogram_id && normalizeKey(report.player_name) === playerKey && sameTeam;
   });
 }
@@ -713,7 +1234,7 @@ function findDirectObjectivePlayer(
   const dataset = campogramCategoryToDataset(player.category);
   const playerNameKey = normalizeKey(player.player_name);
   const playerTokens = playerNameKey.split(/\s+/).filter(Boolean);
-  const playerTeamKey = normalizeTeamKey(player.team_name);
+  const playerTeamKey = resolvedPlayerTeamKey(player);
   const playerLine = objectivePositionLine(player.position);
   let bestPlayer: ObjectivePlayer | null = null;
   let bestScore = -1;
@@ -825,7 +1346,7 @@ function buildCampogramObjectiveCandidates(
   objectivePlayersById: Map<string, ObjectivePlayer>,
 ) {
   const playerNameKey = normalizeKey(player.player_name);
-  const teamKey = normalizeTeamKey(player.team_name);
+  const teamKey = resolvedPlayerTeamKey(player);
   const positionKey = normalizeKey(player.position);
 
   return objectiveMatches
@@ -1340,6 +1861,511 @@ function OverviewCard({
   );
 }
 
+type CampogramsPdfEntry = {
+  key: string;
+  title: string;
+  subtitle: string;
+  campogram: Campogram;
+  players: CampogramPlayer[];
+};
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function playersWithReportsCount(players: CampogramPlayer[], reportMap: Map<string, CampogramReport[]>) {
+  return players.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
+}
+
+function playersWithMultipleReportsCount(players: CampogramPlayer[], reportMap: Map<string, CampogramReport[]>) {
+  return players.filter((player) => (reportMap.get(player.id) || []).length > 1).length;
+}
+
+function playersWithoutReportsCount(players: CampogramPlayer[], reportMap: Map<string, CampogramReport[]>) {
+  return players.length - playersWithReportsCount(players, reportMap);
+}
+
+function playersWithoutConsensusCount(players: CampogramPlayer[], reportMap: Map<string, CampogramReport[]>) {
+  return players.filter((player) => playerStatus(player, reportMap) === "Sin consenso").length;
+}
+
+function pipelineSortValue(player: CampogramPlayer) {
+  const status = normalizePipelineStatus(player.pipeline_status);
+  switch (status) {
+    case "tocado":
+      return 0;
+    case "ofrecido":
+      return 1;
+    case "lista":
+      return 2;
+    case "rechazado":
+      return 3;
+    default:
+      return 99;
+  }
+}
+
+function sortCampogramPlayersForPdf(players: CampogramPlayer[], reportMap: Map<string, CampogramReport[]>) {
+  return [...players].sort((a, b) => {
+    const positionDiff = positionSortValue(normalizePosition(a.position)) - positionSortValue(normalizePosition(b.position));
+    if (positionDiff !== 0) return positionDiff;
+    const reportDiff = (reportMap.get(b.id) || []).length - (reportMap.get(a.id) || []).length;
+    if (reportDiff !== 0) return reportDiff;
+    return a.player_name.localeCompare(b.player_name, "es");
+  });
+}
+
+function buildCampogramsPdfEntries({
+  campograms,
+  mode,
+  players,
+  reportMap,
+}: {
+  campograms: Campogram[];
+  mode: CampogramsPdfMode;
+  players: CampogramPlayer[];
+  reportMap: Map<string, CampogramReport[]>;
+}) {
+  const playersByCampogram = new Map<string, CampogramPlayer[]>();
+  for (const campogram of campograms) {
+    playersByCampogram.set(campogram.id, sortCampogramPlayersForPdf(players.filter((player) => player.campogram_id === campogram.id), reportMap));
+  }
+
+  if (mode === "clasico") {
+    return campograms.map((campogram) => ({
+      key: `${campogram.id}-clasico`,
+      title: campogram.name,
+      subtitle: "Vista completa del campograma",
+      campogram,
+      players: playersByCampogram.get(campogram.id) || [],
+    }));
+  }
+
+  if (mode === "situacion_jugador") {
+    return PIPELINE_STATUS_ORDER.flatMap((status) =>
+      campograms.map((campogram) => ({
+        key: `${campogram.id}-${status}`,
+        title: `${campogram.name} · ${PIPELINE_STATUS_LABELS[status]}`,
+        subtitle: `Jugadores en estado ${PIPELINE_STATUS_LABELS[status]}`,
+        campogram,
+        players: (playersByCampogram.get(campogram.id) || []).filter(
+          (player) => normalizePipelineStatus(player.pipeline_status) === status,
+        ),
+      })),
+    );
+  }
+
+  return CONSENSUS_ORDER.flatMap((consensus) =>
+    campograms.map((campogram) => ({
+      key: `${campogram.id}-${normalizeKey(consensus)}`,
+      title: `${campogram.name} · ${consensus}`,
+      subtitle: `Jugadores con valoración ${consensus}`,
+      campogram,
+      players: (playersByCampogram.get(campogram.id) || []).filter(
+        (player) => playerStatus(player, reportMap) === consensus,
+      ),
+    })),
+  );
+}
+
+function CampogramsPdfHeader({
+  mode,
+  printedAt,
+}: {
+  mode: CampogramsPdfMode;
+  printedAt: string;
+}) {
+  return (
+    <PdfView fixed style={campogramsPdfStyles.header}>
+      <PdfView style={campogramsPdfStyles.headerLeft}>
+        <PdfText style={campogramsPdfStyles.headerTitle}>Secretaría Técnica USCF</PdfText>
+        <PdfText style={campogramsPdfStyles.headerSubtitle}>
+          Informe Área de Scouting · Campogramas · {CAMPROGRAMS_PDF_MODE_LABELS[mode]}
+        </PdfText>
+      </PdfView>
+      <PdfView style={campogramsPdfStyles.headerRight}>
+        <PdfText style={campogramsPdfStyles.headerDate}>Fecha de impresión: {printedAt}</PdfText>
+        <PdfImage src={UNIONISTAS_BADGE_SRC} style={campogramsPdfStyles.headerLogo} />
+      </PdfView>
+    </PdfView>
+  );
+}
+
+function CampogramsPdfFooter() {
+  return (
+    <>
+      <PdfText
+        fixed
+        render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
+        style={campogramsPdfStyles.pageNumber}
+      />
+      <PdfText fixed style={campogramsPdfStyles.footer}>
+        Diseñador del Informe: Ramón Codesido | MCode Analytics
+      </PdfText>
+    </>
+  );
+}
+
+function CampogramsPdfMetricCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | number;
+}) {
+  return (
+    <PdfView style={campogramsPdfStyles.metricBox}>
+      <PdfText style={campogramsPdfStyles.metricLabel}>{label}</PdfText>
+      <PdfText style={campogramsPdfStyles.metricValue}>{value}</PdfText>
+    </PdfView>
+  );
+}
+
+function CampogramsPdfSectionHeader({
+  count,
+  title,
+}: {
+  count?: string | number;
+  title: string;
+}) {
+  return (
+    <PdfView style={campogramsPdfStyles.sectionHeader}>
+      <PdfText style={campogramsPdfStyles.sectionHeaderTitle}>{title}</PdfText>
+      {count !== undefined ? <PdfText style={campogramsPdfStyles.sectionHeaderCount}>{count}</PdfText> : null}
+    </PdfView>
+  );
+}
+
+function CampogramsPdfSubheader({ title }: { title: string }) {
+  return (
+    <PdfView style={campogramsPdfStyles.sectionSubheader}>
+      <PdfText style={campogramsPdfStyles.sectionSubheaderTitle}>{title}</PdfText>
+    </PdfView>
+  );
+}
+
+function CampogramsPdfLegend() {
+  return (
+    <PdfView style={campogramsPdfStyles.legendWrap} wrap={false}>
+      <PdfText style={campogramsPdfStyles.legendTitle}>Leyenda General de los Minigráficos</PdfText>
+      <PdfView style={campogramsPdfStyles.legendItems}>
+        {CONSENSUS_ORDER.map((label) => (
+          <PdfView key={label} style={campogramsPdfStyles.legendItem}>
+            <PdfView style={[campogramsPdfStyles.legendDot, { backgroundColor: CONSENSUS_COLORS[label] }]} />
+            <PdfText style={campogramsPdfStyles.legendLabel}>{label}</PdfText>
+          </PdfView>
+        ))}
+      </PdfView>
+    </PdfView>
+  );
+}
+
+function CampogramsPdfCover({
+  mode,
+  printedAt,
+}: {
+  mode: CampogramsPdfMode;
+  printedAt: string;
+}) {
+  return (
+    <PdfPage orientation="landscape" size="A4" style={campogramsPdfStyles.cover}>
+      <PdfView style={campogramsPdfStyles.coverStrip} />
+      <PdfView style={campogramsPdfStyles.coverAccent} />
+      <PdfImage src={UNIONISTAS_BADGE_SRC} style={campogramsPdfStyles.coverLogo} />
+      <PdfImage src={UNIONISTAS_BADGE_SRC} style={campogramsPdfStyles.coverWatermark} />
+      <PdfText style={campogramsPdfStyles.coverTitle}>Informe Área de Scouting</PdfText>
+      <PdfText style={campogramsPdfStyles.coverSubtitle}>CAMPOGRAMAS</PdfText>
+      <PdfText style={campogramsPdfStyles.coverSubtitle}>Secretaría Técnica USCF</PdfText>
+      <PdfText style={campogramsPdfStyles.coverMeta}>{CAMPROGRAMS_PDF_MODE_LABELS[mode]}</PdfText>
+      <PdfText style={campogramsPdfStyles.coverMeta}>Fecha de impresión: {printedAt}</PdfText>
+    </PdfPage>
+  );
+}
+
+function CampogramsPdfIndexPages({
+  indexRows,
+  mode,
+  printedAt,
+}: {
+  indexRows: Array<{ label: string; page: number }>;
+  mode: CampogramsPdfMode;
+  printedAt: string;
+}) {
+  return chunkArray(indexRows, CAMPROGRAMS_PDF_INDEX_ROWS_PER_PAGE).map((chunk, chunkIndex) => (
+    <PdfPage key={`index-${chunkIndex}`} orientation="landscape" size="A4" style={campogramsPdfStyles.page}>
+      <PdfImage src={UNIONISTAS_BADGE_SRC} style={campogramsPdfStyles.pageWatermark} />
+      <CampogramsPdfHeader mode={mode} printedAt={printedAt} />
+      <PdfText style={campogramsPdfStyles.indexTitle}>
+        Índice{chunkIndex ? ` · Continuación ${chunkIndex + 1}` : ""}
+      </PdfText>
+      <PdfView style={campogramsPdfStyles.indexRows}>
+        {chunk.map((row) => (
+          <PdfView key={`${row.label}-${row.page}`} style={campogramsPdfStyles.indexRow}>
+            <PdfText style={campogramsPdfStyles.indexRowLabel}>{row.label}</PdfText>
+            <PdfText style={campogramsPdfStyles.indexRowPage}>{row.page}</PdfText>
+          </PdfView>
+        ))}
+      </PdfView>
+      <CampogramsPdfFooter />
+    </PdfPage>
+  ));
+}
+
+function CampogramsPdfOverviewCard({
+  campogram,
+  players,
+  reportMap,
+  fullWidth = false,
+}: {
+  campogram: Campogram;
+  players: CampogramPlayer[];
+  reportMap: Map<string, CampogramReport[]>;
+  fullWidth?: boolean;
+}) {
+  const totalPlayers = players.length;
+  const playersWithReports = playersWithReportsCount(players, reportMap);
+  const playersWithMultipleReports = playersWithMultipleReportsCount(players, reportMap);
+  const playersWithoutReports = playersWithoutReportsCount(players, reportMap);
+  const playersWithoutConsensus = playersWithoutConsensusCount(players, reportMap);
+  const withReportsPercentage = formatMetricPercentage(playersWithReports, totalPlayers);
+  const withMultipleReportsPercentage = formatMetricPercentage(playersWithMultipleReports, totalPlayers);
+
+  return (
+    <PdfView style={fullWidth ? [campogramsPdfStyles.overviewCard, campogramsPdfStyles.overviewCardFullWidth] : campogramsPdfStyles.overviewCard} wrap={false}>
+      <PdfView style={campogramsPdfStyles.overviewCardHead}>
+        <PdfText style={campogramsPdfStyles.overviewCardTitle}>{campogram.name}</PdfText>
+        <PdfView style={campogramsPdfStyles.overviewCardStats}>
+          <PdfText style={[campogramsPdfStyles.overviewCardStat, { color: reportCoverageColor(playersWithReports, totalPlayers) }]}>
+            Inf. {withReportsPercentage}
+          </PdfText>
+          <PdfText
+            style={[
+              campogramsPdfStyles.overviewCardStat,
+              { color: reportCoverageColor(playersWithMultipleReports, totalPlayers) },
+            ]}
+          >
+            +1 inf. {withMultipleReportsPercentage}
+          </PdfText>
+        </PdfView>
+      </PdfView>
+      <PdfView style={campogramsPdfStyles.positionSummaryGrid}>
+        {POSITION_ORDER.map((position) => {
+          const positionPlayers = players.filter((player) => normalizePosition(player.position) === position);
+          const total = positionPlayers.length;
+          const withReportCount = playersWithReportsCount(positionPlayers, reportMap);
+          return (
+            <PdfView key={`${campogram.id}-${position}`} style={campogramsPdfStyles.positionSummaryCell}>
+              <PdfText style={campogramsPdfStyles.positionSummaryLabel}>{position}</PdfText>
+              <PdfText
+                style={[
+                  campogramsPdfStyles.positionSummaryPercent,
+                  { color: reportCoverageColor(withReportCount, total) },
+                ]}
+              >
+                {formatMetricPercentage(withReportCount, total)}
+              </PdfText>
+              <PdfText style={campogramsPdfStyles.positionSummaryTotal}>{total}J</PdfText>
+            </PdfView>
+          );
+        })}
+      </PdfView>
+      {!fullWidth ? (
+        <PdfView style={campogramsPdfStyles.overviewIndicators}>
+          <PdfView style={campogramsPdfStyles.overviewIndicator}>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorLabel}>Jugadores</PdfText>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorValue}>{totalPlayers}</PdfText>
+          </PdfView>
+          <PdfView style={campogramsPdfStyles.overviewIndicator}>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorLabel}>Con informe</PdfText>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorValue}>
+              {playersWithReports} ({withReportsPercentage})
+            </PdfText>
+          </PdfView>
+          <PdfView style={campogramsPdfStyles.overviewIndicator}>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorLabel}>Sin informe</PdfText>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorValue}>
+              {playersWithoutReports} ({formatMetricPercentage(playersWithoutReports, totalPlayers)})
+            </PdfText>
+          </PdfView>
+          <PdfView style={campogramsPdfStyles.overviewIndicator}>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorLabel}>Sin consenso</PdfText>
+            <PdfText style={campogramsPdfStyles.overviewIndicatorValue}>
+              {playersWithoutConsensus} ({formatMetricPercentage(playersWithoutConsensus, totalPlayers)})
+            </PdfText>
+          </PdfView>
+        </PdfView>
+      ) : null}
+    </PdfView>
+  );
+}
+
+function CampogramsPdfSituationPage({
+  campograms,
+  mode,
+  players,
+  printedAt,
+  reportMap,
+}: {
+  campograms: Campogram[];
+  mode: CampogramsPdfMode;
+  players: CampogramPlayer[];
+  printedAt: string;
+  reportMap: Map<string, CampogramReport[]>;
+}) {
+  return (
+    <PdfPage orientation="landscape" size="A4" style={campogramsPdfStyles.page}>
+      <PdfImage src={UNIONISTAS_BADGE_SRC} style={campogramsPdfStyles.pageWatermark} />
+      <CampogramsPdfHeader mode={mode} printedAt={printedAt} />
+      <CampogramsPdfSectionHeader count={campograms.length} title="Situación Campogramas" />
+      <PdfView style={campogramsPdfStyles.overviewGrid}>
+        {campograms.map((campogram) => (
+          <CampogramsPdfOverviewCard
+            campogram={campogram}
+            key={campogram.id}
+            players={players.filter((player) => player.campogram_id === campogram.id)}
+            reportMap={reportMap}
+          />
+        ))}
+      </PdfView>
+      <CampogramsPdfLegend />
+      <CampogramsPdfFooter />
+    </PdfPage>
+  );
+}
+
+function CampogramsPdfCampogramPage({
+  entry,
+  mode,
+  printedAt,
+  reportMap,
+}: {
+  entry: CampogramsPdfEntry;
+  mode: CampogramsPdfMode;
+  printedAt: string;
+  reportMap: Map<string, CampogramReport[]>;
+}) {
+  const totalPlayers = entry.players.length;
+
+  return (
+    <PdfPage orientation="landscape" size="A4" style={campogramsPdfStyles.page}>
+      <PdfImage src={UNIONISTAS_BADGE_SRC} style={campogramsPdfStyles.pageWatermark} />
+      <CampogramsPdfHeader mode={mode} printedAt={printedAt} />
+      <CampogramsPdfSectionHeader count={`${totalPlayers} jugadores`} title={entry.title} />
+      <PdfView style={campogramsPdfStyles.pitchWrap}>
+        <PdfView style={campogramsPdfStyles.fieldRows}>
+          {FIELD_ROWS.map((row, rowIndex) => (
+            <PdfView key={`${entry.key}-row-${rowIndex}`} style={campogramsPdfStyles.fieldRow}>
+              {row.map((position, columnIndex) => {
+                if (!position) {
+                  return <PdfView key={`${entry.key}-spacer-${rowIndex}-${columnIndex}`} style={campogramsPdfStyles.fieldSpacer} />;
+                }
+                const positionPlayers = entry.players.filter((player) => normalizePosition(player.position) === position);
+                const withReportCount = playersWithReportsCount(positionPlayers, reportMap);
+                const columnCount = positionPlayers.length >= 7 ? 3 : positionPlayers.length >= 4 ? 2 : 1;
+                const playersPerColumn = Math.max(1, Math.ceil(positionPlayers.length / columnCount));
+                const playerColumns = chunkArray(positionPlayers, playersPerColumn);
+                return (
+                  <PdfView key={`${entry.key}-${position}`} style={campogramsPdfStyles.fieldCell}>
+                    <PdfView style={campogramsPdfStyles.fieldCellHead}>
+                      <PdfText style={campogramsPdfStyles.fieldCellTitle}>{position}</PdfText>
+                      <PdfText style={campogramsPdfStyles.fieldCellTotal}>
+                        {positionPlayers.length}J · {formatMetricPercentage(withReportCount, positionPlayers.length)}
+                      </PdfText>
+                    </PdfView>
+                    <PdfView style={columnCount > 1 ? campogramsPdfStyles.fieldPlayersColumns : campogramsPdfStyles.fieldPlayers}>
+                      {positionPlayers.length ? (
+                        playerColumns.map((column, columnIndex) => (
+                          <PdfView
+                            key={`${entry.key}-${position}-column-${columnIndex}`}
+                            style={columnCount > 1 ? campogramsPdfStyles.fieldPlayersColumn : undefined}
+                          >
+                            {column.map((player) => {
+                              const team = playerTeamDisplay(player);
+                              const consensus = playerStatus(player, reportMap);
+                              const pipeline = pipelineStatusLabel(normalizePipelineStatus(player.pipeline_status));
+                              const statusLine =
+                                mode === "situacion_jugador"
+                                  ? `${pipeline} · ${consensus}`
+                                  : mode === "situacion_scout"
+                                    ? `${consensus} · ${pipeline}`
+                                    : `${consensus} · ${pipeline}`;
+                              return (
+                                <PdfView key={player.id}>
+                                  <PdfText style={campogramsPdfStyles.fieldPlayer}>{player.player_name}</PdfText>
+                                  <PdfText style={campogramsPdfStyles.fieldPlayerMeta}>{team}</PdfText>
+                                  <PdfText style={campogramsPdfStyles.fieldPlayerMeta}>{statusLine}</PdfText>
+                                </PdfView>
+                              );
+                            })}
+                          </PdfView>
+                        ))
+                      ) : (
+                        <PdfText style={campogramsPdfStyles.emptyCell}>Sin jugadores en este bloque</PdfText>
+                      )}
+                    </PdfView>
+                  </PdfView>
+                );
+              })}
+            </PdfView>
+          ))}
+        </PdfView>
+      </PdfView>
+      <CampogramsPdfFooter />
+    </PdfPage>
+  );
+}
+
+function CampogramsPdfDocument({
+  campograms,
+  mode,
+  players,
+  printedAt,
+  reportMap,
+}: {
+  campograms: Campogram[];
+  mode: CampogramsPdfMode;
+  players: CampogramPlayer[];
+  printedAt: string;
+  reportMap: Map<string, CampogramReport[]>;
+}) {
+  const entries = buildCampogramsPdfEntries({ campograms, mode, players, reportMap });
+  const situationPageNumber = 2 + Math.ceil((entries.length + 1) / CAMPROGRAMS_PDF_INDEX_ROWS_PER_PAGE);
+  const indexRows = [
+    { label: "Situación actual", page: situationPageNumber },
+    ...entries.map((entry, index) => ({
+      label: entry.title,
+      page: situationPageNumber + 1 + index,
+    })),
+  ];
+
+  return (
+    <PdfDocument>
+      <CampogramsPdfCover mode={mode} printedAt={printedAt} />
+      {CampogramsPdfIndexPages({ indexRows, mode, printedAt })}
+      <CampogramsPdfSituationPage
+        campograms={campograms}
+        mode={mode}
+        players={players}
+        printedAt={printedAt}
+        reportMap={reportMap}
+      />
+      {entries.map((entry) => (
+        <CampogramsPdfCampogramPage
+          entry={entry}
+          key={entry.key}
+          mode={mode}
+          printedAt={printedAt}
+          reportMap={reportMap}
+        />
+      ))}
+    </PdfDocument>
+  );
+}
+
 function PositionDistribution({
   players,
   reportMap,
@@ -1542,8 +2568,10 @@ function PlayerCard({
   objectivePlayers: ObjectivePlayer[];
 }) {
   const status = consensusFromReports(reports);
+  const categoryTone = categoryClass(player.category);
   return (
-    <article className={`campogram-player-card ${categoryClass(player.category)}`}>
+    <article className={`campogram-player-card ${pipelineCardClass(player)}`}>
+      <i aria-hidden="true" className={`campogram-category-dot ${categoryTone}`} title={player.category || "Sin categoría"} />
       <div className="campogram-player-card__top">
         <div>
           <strong>{player.player_name}</strong>
@@ -1553,7 +2581,6 @@ function PlayerCard({
         <div className="campogram-player-card__badges">
           {canManagePipeline ? <PipelineStatusBadge player={player} /> : null}
           <em className={CONSENSUS_CLASS[status] || "campogram-consensus--sin-informes"}>{status}</em>
-          <em>{player.category || "Sin categoría"}</em>
         </div>
       </div>
       <small>
@@ -1585,17 +2612,17 @@ function CompactPlayerCard({
   onSelect: (player: CampogramPlayer) => void;
 }) {
   const status = consensusFromReports(reports);
+  const categoryTone = categoryClass(player.category);
   return (
     <button
-      className={`campogram-compact-card ${categoryClass(player.category)}`}
+      className={`campogram-compact-card ${pipelineCardClass(player)}`}
       onClick={() => onSelect(player)}
       type="button"
     >
+      <i aria-hidden="true" className={`campogram-category-dot ${categoryTone}`} title={player.category || "Sin categoría"} />
       <span className="campogram-compact-card__name">{player.player_name}</span>
       <span className="campogram-compact-card__club">{playerTeamDisplay(player)}</span>
-      <span className="campogram-compact-card__meta">
-        {birthYearWithAge(player.birth_year)} · {player.category || "Sin categoría"}
-      </span>
+      <span className="campogram-compact-card__meta">{birthYearWithAge(player.birth_year)}</span>
       {canManagePipeline ? <PipelineStatusBadge player={player} /> : null}
       <em className={CONSENSUS_CLASS[status] || "campogram-consensus--sin-informes"}>{status}</em>
     </button>
@@ -1623,7 +2650,11 @@ function PositionPanel({
 }) {
   const positionPlayers = players
     .filter((player) => normalizePosition(player.position) === position)
-    .sort((a, b) => a.player_name.localeCompare(b.player_name, "es"));
+    .sort((a, b) => {
+      const pipelineDiff = pipelineSortValue(a) - pipelineSortValue(b);
+      if (pipelineDiff !== 0) return pipelineDiff;
+      return a.player_name.localeCompare(b.player_name, "es");
+    });
 
   return (
     <section className="campogram-position-panel">
@@ -1664,9 +2695,8 @@ function PitchPositionPanel({
   const positionPlayers = players
     .filter((player) => normalizePosition(player.position) === position)
     .sort((a, b) => {
-      const statusCompare =
-        consensusSortValue(playerStatus(a, reportMap)) - consensusSortValue(playerStatus(b, reportMap));
-      if (statusCompare !== 0) return statusCompare;
+      const pipelineDiff = pipelineSortValue(a) - pipelineSortValue(b);
+      if (pipelineDiff !== 0) return pipelineDiff;
       return a.player_name.localeCompare(b.player_name, "es");
     });
 
@@ -1846,6 +2876,7 @@ export function CampogramsView({
   const [selectedCampogramId, setSelectedCampogramId] = useSessionState<string>("camp:selectedCampogramId", "");
   const [selectedPlayerId, setSelectedPlayerId] = useSessionState<string | null>("camp:selectedPlayerId", null);
   const [selectedAgencyKey, setSelectedAgencyKey] = useSessionState<string>("camp:selectedAgencyKey", "");
+  const [campogramsPdfMode, setCampogramsPdfMode] = useState<CampogramsPdfMode>("clasico");
   const [pipelineUpdatingPlayerId, setPipelineUpdatingPlayerId] = useState<string | null>(null);
 
   const visibleCampogramPlayers = useMemo(
@@ -1893,6 +2924,18 @@ export function CampogramsView({
   const allStatuses = visibleCampogramPlayers.map((player) => playerStatus(player, reportMap));
   const isScoutScope = profile?.role === "scout";
   const canManagePipeline = profile?.role === "admin" || profile?.role === "coordinator";
+  const printedAt = useMemo(
+    () => new Intl.DateTimeFormat("es-ES", { dateStyle: "short" }).format(new Date()),
+    [],
+  );
+  const campogramsPdfFileName = useMemo(
+    () =>
+      `Informe_Campogramas_${campogramsPdfMode}_${new Date()
+        .toISOString()
+        .slice(0, 10)
+        .replaceAll("-", "")}.pdf`,
+    [campogramsPdfMode],
+  );
   const campogramNameById = useMemo(
     () => new Map(campograms.map((campogram) => [campogram.id, campogram.name])),
     [campograms],
@@ -1981,11 +3024,6 @@ export function CampogramsView({
 
   return (
     <section className="campograms-view">
-      <div className="section-title">
-        <h2>Campogramas</h2>
-        <span>{visibleCampogramPlayers.length} jugadores</span>
-      </div>
-
       {isScoutScope ? (
         <div className="role-scope-note">
           <strong>Vista scout</strong>
@@ -1995,6 +3033,44 @@ export function CampogramsView({
           </span>
         </div>
       ) : null}
+
+      <div className="section-title">
+        <h2>Campogramas</h2>
+        <div className="campogram-title-actions">
+          {canManagePipeline ? (
+            <div className="campogram-pdf-actions">
+              <label className="inline-control campogram-pdf-actions__mode">
+                Informe
+                <select
+                  onChange={(event) => setCampogramsPdfMode(event.target.value as CampogramsPdfMode)}
+                  value={campogramsPdfMode}
+                >
+                  {Object.entries(CAMPROGRAMS_PDF_MODE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <PDFDownloadLink
+                document={
+                  <CampogramsPdfDocument
+                    campograms={campograms}
+                    mode={campogramsPdfMode}
+                    players={visibleCampogramPlayers}
+                    printedAt={printedAt}
+                    reportMap={reportMap}
+                  />
+                }
+                fileName={campogramsPdfFileName}
+              >
+                {({ loading }) => (loading ? "Preparando PDF..." : "Descargar Campogramas")}
+              </PDFDownloadLink>
+            </div>
+          ) : null}
+          <span>{visibleCampogramPlayers.length} jugadores</span>
+        </div>
+      </div>
 
       <section className="mini-metrics-grid">
         <Metric label="Jugadores" value={totalVisiblePlayers} />
