@@ -165,6 +165,8 @@ const CAMPROGRAMS_PDF_MODE_LABELS: Record<CampogramsPdfMode, string> = {
   situacion_scout: "Situación scout",
 };
 
+const TOTAL_CAMPGRAM_ID = "__campogram_total__";
+
 const campogramsPdfStyles = PdfStyleSheet.create({
   cover: {
     alignItems: "center",
@@ -2744,6 +2746,7 @@ function CampogramPitch({
   objectiveMatches: ObjectivePlayerMatch[];
   objectivePlayers: ObjectivePlayer[];
 }) {
+  const [showListView, setShowListView] = useState(false);
   const standardPositions = new Set(POSITION_ORDER);
   const extraPositions = Array.from(new Set(players.map((player) => normalizePosition(player.position))))
     .filter((position) => !standardPositions.has(position as (typeof POSITION_ORDER)[number]))
@@ -2799,33 +2802,38 @@ function CampogramPitch({
           </div>
         </div>
       </div>
-      <details className="campogram-classic-list">
+      <details
+        className="campogram-classic-list"
+        onToggle={(event) => setShowListView((event.currentTarget as HTMLDetailsElement).open)}
+      >
         <summary>Ver resumen por posiciones en formato listado</summary>
-        <div className="campogram-field">
-          {FIELD_ROWS.map((row, rowIndex) => (
-            <div className="campogram-field-row" key={rowIndex}>
-              {row.map((position, columnIndex) =>
-                position ? (
-                  <PositionPanel
-                    canManagePipeline={canManagePipeline}
-                    isUpdatingPipeline={isUpdatingPipeline}
-                    key={position}
-                    onUpdatePipelineStatus={onUpdatePipelineStatus}
-                    objectiveMatches={objectiveMatches}
-                    objectivePlayers={objectivePlayers}
-                    players={players}
-                    position={position}
-                    reportMap={reportMap}
-                  />
-                ) : (
-                  <div className="campogram-field-spacer" key={`spacer-${rowIndex}-${columnIndex}`} />
-                ),
-              )}
-            </div>
-          ))}
-        </div>
+        {showListView ? (
+          <div className="campogram-field">
+            {FIELD_ROWS.map((row, rowIndex) => (
+              <div className="campogram-field-row" key={rowIndex}>
+                {row.map((position, columnIndex) =>
+                  position ? (
+                    <PositionPanel
+                      canManagePipeline={canManagePipeline}
+                      isUpdatingPipeline={isUpdatingPipeline}
+                      key={position}
+                      onUpdatePipelineStatus={onUpdatePipelineStatus}
+                      objectiveMatches={objectiveMatches}
+                      objectivePlayers={objectivePlayers}
+                      players={players}
+                      position={position}
+                      reportMap={reportMap}
+                    />
+                  ) : (
+                    <div className="campogram-field-spacer" key={`spacer-${rowIndex}-${columnIndex}`} />
+                  ),
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </details>
-      {extraPositions.length ? (
+      {showListView && extraPositions.length ? (
         <>
           <div className="section-title">
             <h2>Otras posiciones</h2>
@@ -2876,6 +2884,10 @@ export function CampogramsView({
   const [selectedCampogramId, setSelectedCampogramId] = useSessionState<string>("camp:selectedCampogramId", "");
   const [selectedPlayerId, setSelectedPlayerId] = useSessionState<string | null>("camp:selectedPlayerId", null);
   const [selectedAgencyKey, setSelectedAgencyKey] = useSessionState<string>("camp:selectedAgencyKey", "");
+  const [totalPipelineStatuses, setTotalPipelineStatuses] = useSessionState<CampogramPipelineStatus[]>(
+    "camp:totalPipelineStatuses",
+    ["tocado", "ofrecido", "lista", "rechazado"],
+  );
   const [campogramsPdfMode, setCampogramsPdfMode] = useState<CampogramsPdfMode>("clasico");
   const [pipelineUpdatingPlayerId, setPipelineUpdatingPlayerId] = useState<string | null>(null);
 
@@ -2895,6 +2907,18 @@ export function CampogramsView({
     () => buildReportMap(visibleCampogramPlayers, visibleCampogramReports, canonicalIdByPlayerId),
     [visibleCampogramPlayers, visibleCampogramReports, canonicalIdByPlayerId],
   );
+  const playersByCampogramId = useMemo(() => {
+    const grouped = new Map<string, CampogramPlayer[]>();
+    for (const player of visibleCampogramPlayers) {
+      const current = grouped.get(player.campogram_id);
+      if (current) {
+        current.push(player);
+      } else {
+        grouped.set(player.campogram_id, [player]);
+      }
+    }
+    return grouped;
+  }, [visibleCampogramPlayers]);
 
   useEffect(() => {
     if (!selectedCampogramId && campograms.length) {
@@ -2915,13 +2939,32 @@ export function CampogramsView({
     }
   }, [canonicalIdByPlayerId, focusPlayerId, focusPlayerName, visibleCampogramPlayers]);
 
-  const selectedPlayers = visibleCampogramPlayers.filter((player) => player.campogram_id === selectedCampogramId);
+  const isTotalCampogram = selectedCampogramId === TOTAL_CAMPGRAM_ID;
+  const selectedPlayers = useMemo(() => {
+    if (isTotalCampogram) {
+      const activeStatuses = new Set(totalPipelineStatuses);
+      return visibleCampogramPlayers.filter((player) => activeStatuses.has(normalizePipelineStatus(player.pipeline_status)));
+    }
+    return playersByCampogramId.get(selectedCampogramId) || [];
+  }, [isTotalCampogram, playersByCampogramId, selectedCampogramId, totalPipelineStatuses, visibleCampogramPlayers]);
   const selectedCampogram = campograms.find((campogram) => campogram.id === selectedCampogramId);
   const selectedPlayer = selectedPlayers.find((player) => player.id === selectedPlayerId) || null;
-  const withReports = selectedPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
-  const selectedStatuses = selectedPlayers.map((player) => playerStatus(player, reportMap));
-  const sinConsenso = selectedStatuses.filter((status) => status === "Sin consenso").length;
-  const allStatuses = visibleCampogramPlayers.map((player) => playerStatus(player, reportMap));
+  const { withReports, sinConsenso } = useMemo(() => {
+    let reportsCount = 0;
+    let noConsensusCount = 0;
+    for (const player of selectedPlayers) {
+      const reports = reportMap.get(player.id) || [];
+      if (reports.length > 0) reportsCount += 1;
+      if (playerStatus(player, reportMap) === "Sin consenso") noConsensusCount += 1;
+    }
+    return { withReports: reportsCount, sinConsenso: noConsensusCount };
+  }, [reportMap, selectedPlayers]);
+  const visiblePlayersWithReports = useMemo(
+    () => visibleCampogramPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length,
+    [reportMap, visibleCampogramPlayers],
+  );
+  const totalVisiblePlayers = visibleCampogramPlayers.length;
+  const visiblePlayersWithoutReports = totalVisiblePlayers - visiblePlayersWithReports;
   const isScoutScope = profile?.role === "scout";
   const canManagePipeline = profile?.role === "admin" || profile?.role === "coordinator";
   const printedAt = useMemo(
@@ -2992,9 +3035,19 @@ export function CampogramsView({
       });
   }, [campogramNameById, selectedAgencyKey, visibleCampogramPlayers]);
   const selectedAgency = agencies.find((agency) => agency.key === selectedAgencyKey) || null;
-  const totalVisiblePlayers = visibleCampogramPlayers.length;
-  const visiblePlayersWithReports = visibleCampogramPlayers.filter((player) => (reportMap.get(player.id) || []).length > 0).length;
-  const visiblePlayersWithoutReports = allStatuses.filter((status) => status === "Sin informes").length;
+  const selectedCampogramTitle = isTotalCampogram ? "Campograma total" : selectedCampogram?.name || "Campograma";
+  const campogramsPdfDocument = useMemo(
+    () => (
+      <CampogramsPdfDocument
+        campograms={campograms}
+        mode={campogramsPdfMode}
+        players={visibleCampogramPlayers}
+        printedAt={printedAt}
+        reportMap={reportMap}
+      />
+    ),
+    [campograms, campogramsPdfMode, printedAt, reportMap, visibleCampogramPlayers],
+  );
 
   const handlePipelineStatusChange = useCallback(
     async (playerId: string, nextStatus: CampogramPipelineStatus) => {
@@ -3020,6 +3073,17 @@ export function CampogramsView({
       }
     },
     [canManagePipeline, onUpdateCampogramPlayer],
+  );
+
+  const toggleTotalPipelineStatus = useCallback(
+    (status: CampogramPipelineStatus) => {
+      setTotalPipelineStatuses((current) => {
+        const next = current.includes(status) ? current.filter((item) => item !== status) : [...current, status];
+        const normalized = PIPELINE_STATUS_ORDER.filter((item) => next.includes(item));
+        return normalized.length ? normalized : current;
+      });
+    },
+    [setTotalPipelineStatuses],
   );
 
   return (
@@ -3053,15 +3117,7 @@ export function CampogramsView({
                 </select>
               </label>
               <PDFDownloadLink
-                document={
-                  <CampogramsPdfDocument
-                    campograms={campograms}
-                    mode={campogramsPdfMode}
-                    players={visibleCampogramPlayers}
-                    printedAt={printedAt}
-                    reportMap={reportMap}
-                  />
-                }
+                document={campogramsPdfDocument}
                 fileName={campogramsPdfFileName}
               >
                 {({ loading }) => (loading ? "Preparando PDF..." : "Descargar Campogramas")}
@@ -3095,7 +3151,7 @@ export function CampogramsView({
           <OverviewCard
             campogram={campogram}
             key={campogram.id}
-            players={visibleCampogramPlayers.filter((player) => player.campogram_id === campogram.id)}
+            players={playersByCampogramId.get(campogram.id) || []}
             reportMap={reportMap}
           />
         ))}
@@ -3111,6 +3167,7 @@ export function CampogramsView({
           onChange={(event) => setSelectedCampogramId(event.target.value)}
           value={selectedCampogramId}
         >
+          <option value={TOTAL_CAMPGRAM_ID}>TOTAL</option>
           {campograms.map((campogram) => (
             <option key={campogram.id} value={campogram.id}>
               {campogram.name}
@@ -3118,6 +3175,31 @@ export function CampogramsView({
           ))}
         </select>
       </label>
+
+      {isTotalCampogram ? (
+        <div className="campogram-total-filters">
+          <div className="campogram-total-filters__head">
+            <strong>Seguimiento incluido</strong>
+            <span>Selecciona uno o varios estados para construir el campograma total</span>
+          </div>
+          <div className="campogram-total-filters__chips">
+            {["tocado", "ofrecido", "lista", "rechazado"].map((status) => {
+              const typedStatus = status as CampogramPipelineStatus;
+              const active = totalPipelineStatuses.includes(typedStatus);
+              return (
+                <button
+                  key={typedStatus}
+                  type="button"
+                  className={`campogram-total-filter-chip ${PIPELINE_STATUS_CLASS[typedStatus]}${active ? " is-active" : ""}`}
+                  onClick={() => toggleTotalPipelineStatus(typedStatus)}
+                >
+                  {PIPELINE_STATUS_LABELS[typedStatus]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <section className="mini-metrics-grid campogram-selected-metrics">
         <Metric label="Jugadores" value={selectedPlayers.length} />
@@ -3140,7 +3222,7 @@ export function CampogramsView({
       <PositionDistribution players={selectedPlayers} reportMap={reportMap} />
 
       <div className="section-title">
-        <h2>{selectedCampogram?.name || "Campograma"}</h2>
+        <h2>{selectedCampogramTitle}</h2>
         <span>{selectedPlayers.length} jugadores</span>
       </div>
       <CampogramPitch

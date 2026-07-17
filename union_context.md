@@ -614,3 +614,19 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
   - `Lista`
   - `Rechazado`
 - A igualdad de seguimiento, el desempate sigue siendo alfabético por nombre del jugador.
+
+## 17. Campograma total
+
+- Dentro del selector de `Campogramas` existe una vista especial llamada `TOTAL`.
+- Esta vista no corresponde a un campograma real de la hoja, sino a una composición dinámica sobre todos los jugadores visibles.
+- El `Campograma total` permite filtrar por `seguimiento` con selección múltiple.
+- Los estados disponibles para combinar son:
+  - `Tocado`
+  - `Ofrecido`
+  - `Lista`
+  - `Rechazado`
+- La intención de producto es poder ver rápidamente:
+  - solo los `Tocados`
+  - `Tocados + Ofrecidos`
+  - cualquier combinación equivalente
+- El filtro debe mantener siempre al menos un estado activo.

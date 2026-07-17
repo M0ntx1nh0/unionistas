@@ -1577,6 +1577,60 @@ p {
   padding: 0.75rem 0.9rem;
 }
 
+.campogram-total-filters {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(10, 10, 10, 0.08);
+  border-radius: 22px;
+  box-shadow: 0 14px 34px rgba(10, 10, 10, 0.06);
+  display: grid;
+  gap: 0.8rem;
+  margin: -0.2rem 0 1rem;
+  padding: 1rem;
+}
+
+.campogram-total-filters__head {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.campogram-total-filters__head strong {
+  color: #111111;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.campogram-total-filters__head span {
+  color: #66665f;
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.campogram-total-filters__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.campogram-total-filter-chip {
+  border: 1px solid rgba(10, 10, 10, 0.12);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 950;
+  min-height: 2.45rem;
+  opacity: 0.56;
+  padding: 0.55rem 1rem;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.campogram-total-filter-chip.is-active {
+  box-shadow: 0 10px 22px rgba(10, 10, 10, 0.1);
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
 .campogram-overview-grid {
   display: grid;
   gap: 1rem;
