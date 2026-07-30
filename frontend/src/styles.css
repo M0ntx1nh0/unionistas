@@ -2147,6 +2147,11 @@ p {
   color: #4d4d4d;
 }
 
+.campogram-pipeline-badge--fichado {
+  background: #111111;
+  color: #ffffff;
+}
+
 .campogram-pipeline-badge--tocado {
   background: #dcfce7;
   color: #166534;
@@ -2306,6 +2311,13 @@ p {
   border-left-color: #8d8d85 !important;
 }
 
+.campogram-player-card.campogram-card-followup--fichado,
+.campogram-compact-card.campogram-card-followup--fichado {
+  background: linear-gradient(135deg, rgba(24, 24, 24, 0.99), rgba(48, 48, 48, 0.98) 62%) !important;
+  border: 2px solid #0a0a0a !important;
+  border-left-color: #0a0a0a !important;
+}
+
 .campogram-player-card.campogram-card-followup--tocado,
 .campogram-compact-card.campogram-card-followup--tocado {
   background: linear-gradient(135deg, rgba(176, 238, 191, 0.99), rgba(242, 255, 245, 0.98) 62%) !important;
@@ -2346,6 +2358,18 @@ p {
 .campogram-player-card small {
   color: #55554f;
   font-weight: 750;
+}
+
+.campogram-player-card.campogram-card-followup--fichado strong,
+.campogram-compact-card.campogram-card-followup--fichado .campogram-compact-card__name {
+  color: #ffffff;
+}
+
+.campogram-player-card.campogram-card-followup--fichado span,
+.campogram-player-card.campogram-card-followup--fichado small,
+.campogram-compact-card.campogram-card-followup--fichado .campogram-compact-card__club,
+.campogram-compact-card.campogram-card-followup--fichado .campogram-compact-card__meta {
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .campogram-player-card__badges {

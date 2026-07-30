@@ -126,9 +126,10 @@ const CONSENSUS_CLASS: Record<string, string> = {
   "Sin informes": "campogram-consensus--sin-informes",
 };
 
-const PIPELINE_STATUS_ORDER: CampogramPipelineStatus[] = ["lista", "tocado", "ofrecido", "rechazado"];
+const PIPELINE_STATUS_ORDER: CampogramPipelineStatus[] = ["fichado", "tocado", "ofrecido", "lista", "rechazado"];
 
 const PIPELINE_STATUS_LABELS: Record<CampogramPipelineStatus, string> = {
+  fichado: "Fichado",
   lista: "Lista",
   tocado: "Tocado",
   ofrecido: "Ofrecido",
@@ -136,6 +137,7 @@ const PIPELINE_STATUS_LABELS: Record<CampogramPipelineStatus, string> = {
 };
 
 const PIPELINE_STATUS_CLASS: Record<CampogramPipelineStatus, string> = {
+  fichado: "campogram-pipeline-badge--fichado",
   lista: "campogram-pipeline-badge--lista",
   tocado: "campogram-pipeline-badge--tocado",
   ofrecido: "campogram-pipeline-badge--ofrecido",
@@ -1898,14 +1900,16 @@ function playersWithoutConsensusCount(players: CampogramPlayer[], reportMap: Map
 function pipelineSortValue(player: CampogramPlayer) {
   const status = normalizePipelineStatus(player.pipeline_status);
   switch (status) {
-    case "tocado":
+    case "fichado":
       return 0;
-    case "ofrecido":
+    case "tocado":
       return 1;
-    case "lista":
+    case "ofrecido":
       return 2;
-    case "rechazado":
+    case "lista":
       return 3;
+    case "rechazado":
+      return 4;
     default:
       return 99;
   }
@@ -2886,7 +2890,7 @@ export function CampogramsView({
   const [selectedAgencyKey, setSelectedAgencyKey] = useSessionState<string>("camp:selectedAgencyKey", "");
   const [totalPipelineStatuses, setTotalPipelineStatuses] = useSessionState<CampogramPipelineStatus[]>(
     "camp:totalPipelineStatuses",
-    ["tocado", "ofrecido", "lista", "rechazado"],
+    ["fichado", "tocado", "ofrecido", "lista", "rechazado"],
   );
   const [campogramsPdfMode, setCampogramsPdfMode] = useState<CampogramsPdfMode>("clasico");
   const [pipelineUpdatingPlayerId, setPipelineUpdatingPlayerId] = useState<string | null>(null);
@@ -3183,7 +3187,7 @@ export function CampogramsView({
             <span>Selecciona uno o varios estados para construir el campograma total</span>
           </div>
           <div className="campogram-total-filters__chips">
-            {["tocado", "ofrecido", "lista", "rechazado"].map((status) => {
+            {["fichado", "tocado", "ofrecido", "lista", "rechazado"].map((status) => {
               const typedStatus = status as CampogramPipelineStatus;
               const active = totalPipelineStatuses.includes(typedStatus);
               return (

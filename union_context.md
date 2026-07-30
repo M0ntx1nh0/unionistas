@@ -534,11 +534,13 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
   - `Tocado`
   - `Ofrecido`
   - `Rechazado`
+  - `Fichado`
 - La lógica visual prevista es:
   - `Lista` en gris
   - `Tocado` en verde
   - `Ofrecido` en naranja
   - `Rechazado` en rojo
+  - `Fichado` en negro
 - Este estado no debe verlo ni usarlo un `scout`; solo `admin` y `coordinator`.
 - En frontend:
   - los `admin/coordinator` ven la pastilla en tarjetas y un selector en el detalle
@@ -600,6 +602,7 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 
 - Dentro del campo visual de `Campogramas`, el color base de cada tarjeta de jugador ya no depende de la `categoría`.
 - La tarjeta se colorea por `seguimiento`:
+  - `Fichado`: negro
   - `Lista`: gris
   - `Tocado`: verde
   - `Ofrecido`: naranja
@@ -609,6 +612,7 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - La `categoría` ya no se escribe dentro de la tarjeta; se representa con un punto de color en la esquina superior derecha, apoyándose en la leyenda global inferior.
 - Ese punto de categoría debe usar colores más saturados y diferenciados que los fondos antiguos, para que la categoría se identifique de un vistazo.
 - Dentro de cada posición del campograma, las tarjetas se ordenan por `seguimiento` en este orden:
+  - `Fichado`
   - `Tocado`
   - `Ofrecido`
   - `Lista`
@@ -621,6 +625,7 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - Esta vista no corresponde a un campograma real de la hoja, sino a una composición dinámica sobre todos los jugadores visibles.
 - El `Campograma total` permite filtrar por `seguimiento` con selección múltiple.
 - Los estados disponibles para combinar son:
+  - `Fichado`
   - `Tocado`
   - `Ofrecido`
   - `Lista`

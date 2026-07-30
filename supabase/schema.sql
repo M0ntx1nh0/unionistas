@@ -160,7 +160,7 @@ create table if not exists public.campogram_players (
     agent text,
     foot text,
     pipeline_status text not null default 'lista'
-        check (pipeline_status in ('lista', 'tocado', 'ofrecido', 'rechazado')),
+        check (pipeline_status in ('lista', 'tocado', 'ofrecido', 'rechazado', 'fichado')),
     pipeline_status_changed_at timestamptz,
     pipeline_status_changed_by uuid references public.profiles(id) on delete set null,
     source_system text not null default 'google_sheets_campogram_base',
@@ -177,9 +177,9 @@ create table if not exists public.campogram_player_pipeline_events (
     id uuid primary key default gen_random_uuid(),
     campogram_player_id uuid not null references public.campogram_players(id) on delete cascade,
     previous_status text not null
-        check (previous_status in ('lista', 'tocado', 'ofrecido', 'rechazado')),
+        check (previous_status in ('lista', 'tocado', 'ofrecido', 'rechazado', 'fichado')),
     new_status text not null
-        check (new_status in ('lista', 'tocado', 'ofrecido', 'rechazado')),
+        check (new_status in ('lista', 'tocado', 'ofrecido', 'rechazado', 'fichado')),
     changed_at timestamptz not null default now(),
     changed_by uuid references public.profiles(id) on delete set null,
     reverted_at timestamptz,
@@ -342,7 +342,7 @@ begin
     end if;
 
     normalized_next_status := lower(trim(coalesce(next_status, '')));
-    if normalized_next_status not in ('lista', 'tocado', 'ofrecido', 'rechazado') then
+    if normalized_next_status not in ('lista', 'tocado', 'ofrecido', 'rechazado', 'fichado') then
         raise exception 'invalid_pipeline_status';
     end if;
 

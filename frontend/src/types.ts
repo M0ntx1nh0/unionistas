@@ -145,7 +145,7 @@ export type Campogram = {
   display_order: number;
 };
 
-export type CampogramPipelineStatus = "lista" | "tocado" | "ofrecido" | "rechazado";
+export type CampogramPipelineStatus = "lista" | "tocado" | "ofrecido" | "rechazado" | "fichado";
 
 export type CampogramPlayer = {
   id: string;
