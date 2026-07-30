@@ -1817,9 +1817,11 @@ p {
   border-radius: 32px;
   box-shadow: 0 24px 60px rgba(10, 10, 10, 0.14);
   min-height: 620px;
+  min-width: 1448px;
   overflow: hidden;
   padding: 1rem;
   position: relative;
+  width: max-content;
 }
 
 .campogram-pitch-scroll {
@@ -1908,7 +1910,7 @@ p {
   grid-template-columns: minmax(148px, 0.68fr) minmax(392px, 1.38fr) minmax(252px, 0.96fr) minmax(348px, 1.12fr) minmax(148px, 0.68fr);
   min-height: 574px;
   min-width: 1288px;
-  padding-right: 1.2rem;
+  padding-right: 1.8rem;
   position: relative;
   z-index: 1;
 }
@@ -2183,7 +2185,7 @@ p {
 
 @media (max-width: 1560px) {
   .campogram-pitch {
-    min-width: 1260px;
+    min-width: 1410px;
     padding: 0.92rem;
   }
 
@@ -2214,7 +2216,7 @@ p {
 
 @media (max-width: 1340px) {
   .campogram-pitch {
-    min-width: 1180px;
+    min-width: 1360px;
   }
 
   .campogram-pitch__content {
@@ -8075,6 +8077,57 @@ button.ulab-scatter__selection-row:hover {
 /* ─────────────────────────────────────────────────────────
    Responsive refinado — base global + vistas complejas
    ───────────────────────────────────────────────────────── */
+
+@media (max-width: 1180px) {
+  .objective-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-identity {
+    align-items: flex-start;
+  }
+
+  .objective-facts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .objective-metrics-grid {
+    grid-template-columns: repeat(3, minmax(88px, 1fr));
+  }
+
+  .objective-radar-card__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .objective-radar-card__head p {
+    text-align: left;
+  }
+
+  .objective-radar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-radar {
+    margin: 0 auto;
+    max-width: min(100%, 560px);
+  }
+
+  .objective-radar-values {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .objective-radar-insights,
+  .objective-radar-insight-card--split {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-radar-note,
+  .objective-percentile-legend {
+    justify-self: start;
+    text-align: left;
+  }
+}
 
 @media (max-width: 900px) {
   .app-shell {
