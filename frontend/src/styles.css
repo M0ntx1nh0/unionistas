@@ -3245,6 +3245,8 @@ p {
   border-radius: 24px;
   box-shadow: 0 16px 40px rgba(10, 10, 10, 0.08);
   margin: 1rem 0;
+  min-width: 0;
+  overflow: hidden;
   padding: 1rem;
 }
 
@@ -3262,6 +3264,7 @@ p {
   display: grid;
   gap: 1rem;
   grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr);
+  min-width: 0;
 }
 
 .objective-identity {
@@ -3269,6 +3272,7 @@ p {
   display: grid;
   gap: 1rem;
   grid-template-columns: auto 1fr;
+  min-width: 0;
 }
 
 .objective-identity h3 {
@@ -3370,6 +3374,7 @@ p {
   display: grid;
   gap: 0.7rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .objective-facts-grid div,
@@ -3415,6 +3420,8 @@ p {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 34px rgba(10, 10, 10, 0.16);
   color: #ffffff;
   margin-top: 1rem;
+  min-width: 0;
+  overflow: hidden;
   padding: 1rem;
 }
 
@@ -3436,6 +3443,7 @@ p {
   gap: 1rem;
   justify-content: space-between;
   margin-bottom: 0.7rem;
+  min-width: 0;
 }
 
 .objective-radar-card__head h3 {
@@ -3498,6 +3506,7 @@ p {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: minmax(420px, 500px) 1fr;
+  min-width: 0;
 }
 
 /* Modo compacto: solo el gráfico SVG, sin panel de métricas a la derecha */
@@ -3518,6 +3527,7 @@ p {
   border-radius: 22px;
   height: auto;
   max-width: 500px;
+  min-width: 0;
   width: 100%;
 }
 
@@ -3570,6 +3580,7 @@ p {
   align-self: stretch;
   gap: 0.7rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
 }
 
 .objective-radar-group {
@@ -3671,6 +3682,7 @@ p {
   grid-column: 1 / -1;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   margin-top: 0.1rem;
+  min-width: 0;
 }
 
 .objective-radar-insight-card {
@@ -4656,7 +4668,7 @@ p {
 .reports-repeated-grid {
   display: grid;
   gap: 0.65rem;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .reports-repeated-chip {
@@ -8260,6 +8272,69 @@ button.ulab-scatter__selection-row:hover {
     align-items: flex-start;
   }
 
+  .objective-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-identity {
+    align-items: flex-start;
+  }
+
+  .objective-facts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .objective-metrics-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .objective-radar-card__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .objective-radar-card__head p {
+    text-align: left;
+  }
+
+  .objective-radar-controls {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .objective-radar-controls button {
+    flex: 1 1 140px;
+  }
+
+  .objective-radar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-radar {
+    margin: 0 auto;
+  }
+
+  .objective-radar-values,
+  .objective-radar-insights,
+  .objective-radar-insight-card--split {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-radar-note,
+  .objective-percentile-legend {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .objective-similar-card__top,
+  .objective-similar-card__title-row {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-similar-score-stack {
+    align-items: flex-start;
+  }
+
   .campogram-mini-bars {
     gap: 0.35rem;
     min-width: 640px;
@@ -8298,6 +8373,15 @@ button.ulab-scatter__selection-row:hover {
   .campogram-agency-row__meta {
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .campogram-pitch-scroll {
+    padding-inline: 0 0.9rem;
+    scroll-padding-right: 0.9rem;
+  }
+
+  .campogram-pitch {
+    margin-right: 0.35rem;
   }
 }
 
@@ -8620,6 +8704,90 @@ button.ulab-scatter__selection-row:hover {
     max-height: 340px;
   }
 
+  .reports-repeated-scroll {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .reports-repeated-grid {
+    gap: 0.75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reports-repeated-chip {
+    align-content: start;
+    min-height: 142px;
+    overflow: hidden;
+    padding: 0.8rem 0.75rem;
+  }
+
+  .reports-repeated-chip strong {
+    display: -webkit-box;
+    font-size: 0.84rem;
+    line-height: 1.04;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    text-wrap: balance;
+  }
+
+  .reports-repeated-chip span {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .objective-card {
+    padding: 0.9rem;
+  }
+
+  .objective-identity {
+    gap: 0.8rem;
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .objective-photo-wrap,
+  .objective-photo {
+    height: 92px;
+    width: 92px;
+  }
+
+  .objective-facts-grid,
+  .objective-metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .objective-chip-row span,
+  .objective-status {
+    font-size: 0.72rem;
+    padding: 0.32rem 0.56rem;
+  }
+
+  .objective-radar-card {
+    padding: 0.85rem;
+  }
+
+  .objective-radar-layout--compact .objective-radar,
+  .objective-radar {
+    max-width: 100%;
+  }
+
+  .objective-radar__metric-label {
+    font-size: 6.8px;
+  }
+
+  .objective-radar__value-label {
+    font-size: 7.8px;
+  }
+
+  .objective-similar-meta {
+    grid-template-columns: 1fr;
+  }
+
   .campogram-selector,
   .campogram-total-filters,
   .campogram-agency-list {
@@ -8760,6 +8928,14 @@ button.ulab-scatter__selection-row:hover {
     text-align: left;
   }
 
+  .reports-repeated-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reports-repeated-chip {
+    min-height: 128px;
+  }
+
   .ulab-squad-row__track {
     grid-template-columns: 1fr;
   }
@@ -8820,18 +8996,45 @@ button.ulab-scatter__selection-row:hover {
     max-height: 280px;
   }
 
+  .objective-card {
+    padding: 0.8rem;
+  }
+
+  .objective-identity h3 {
+    font-size: 1.7rem;
+  }
+
+  .objective-facts-grid,
+  .objective-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .objective-radar-card__head h3 {
+    font-size: 1.08rem;
+  }
+
+  .objective-radar-controls button {
+    font-size: 0.68rem;
+    padding: 0.42rem 0.58rem;
+  }
+
   .campogram-mini-bars {
     min-width: 520px;
   }
 
   .campogram-pitch {
-    min-width: 1180px;
+    min-width: 1240px;
   }
 
   .campogram-pitch-legend {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.65rem;
+  }
+
+  .campogram-pitch-scroll {
+    padding-inline: 0 1.2rem;
+    scroll-padding-right: 1.2rem;
   }
 
   .campogram-player-modal__panel > header {
