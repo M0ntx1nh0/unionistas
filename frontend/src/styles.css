@@ -1518,6 +1518,7 @@ p {
   gap: 1.25rem;
   grid-template-columns: minmax(240px, 0.7fr) 1.3fr;
   margin-bottom: 1rem;
+  min-width: 0;
   padding: 1.2rem;
 }
 
@@ -4250,6 +4251,7 @@ p {
   gap: 1rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 1rem 0;
+  min-width: 0;
 }
 
 .timeline-panel {
@@ -4340,6 +4342,7 @@ p {
   gap: 1rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 1rem 0;
+  min-width: 0;
 }
 
 .capability-card {
@@ -8079,6 +8082,11 @@ button.ulab-scatter__selection-row:hover {
    ───────────────────────────────────────────────────────── */
 
 @media (max-width: 1180px) {
+  .content-card {
+    min-width: 0;
+    overflow-x: clip;
+  }
+
   .objective-layout {
     grid-template-columns: 1fr;
   }
@@ -8104,8 +8112,16 @@ button.ulab-scatter__selection-row:hover {
     text-align: left;
   }
 
-  .objective-radar-layout {
-    grid-template-columns: 1fr;
+  .objective-card .objective-radar-layout:not(.objective-radar-layout--compact) {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+
+  .objective-card .objective-radar-layout:not(.objective-radar-layout--compact) > * {
+    min-width: 0;
+    width: 100%;
   }
 
   .objective-radar {
@@ -8115,6 +8131,7 @@ button.ulab-scatter__selection-row:hover {
 
   .objective-radar-values {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .objective-radar-insights,
@@ -8362,8 +8379,9 @@ button.ulab-scatter__selection-row:hover {
     flex: 1 1 140px;
   }
 
-  .objective-radar-layout {
-    grid-template-columns: 1fr;
+  .objective-card .objective-radar-layout:not(.objective-radar-layout--compact) {
+    display: flex;
+    flex-direction: column;
   }
 
   .objective-radar {
@@ -8837,6 +8855,10 @@ button.ulab-scatter__selection-row:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .objective-card .objective-radar-layout:not(.objective-radar-layout--compact) > .objective-radar {
+    max-width: 100%;
+  }
+
   .objective-radar__metric-label {
     font-size: 6.8px;
   }
@@ -9073,6 +9095,10 @@ button.ulab-scatter__selection-row:hover {
   .objective-facts-grid,
   .objective-radar-values {
     grid-template-columns: 1fr;
+  }
+
+  .objective-card .objective-radar-layout:not(.objective-radar-layout--compact) {
+    gap: 0.75rem;
   }
 
   .objective-radar-card__head h3 {
