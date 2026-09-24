@@ -7,6 +7,7 @@ import type {
   ScoutingReport,
 } from "../types";
 import { formatDate, formatTime } from "../utils/format";
+import { useSessionState } from "../utils/useSessionState";
 
 type PlayerSource = "general" | "campograms";
 
@@ -36,7 +37,15 @@ type RoundOption = {
   firstDate: string;
 };
 
-const COMPETITIONS = ["1RFEF", "2RFEF"] as const;
+const COMPETITIONS = ["1RFEF", "2RFEF", "Serie C", "Ligue 3"] as const;
+type CompetitionName = (typeof COMPETITIONS)[number];
+
+// En ligas extranjeras los informes usan el nombre oficial del club ("AC Trento",
+// "SSC Bari") y Sofascore el corto ("Trento", "Bari"): se ignoran siglas y años.
+const LOOSE_NAME_COMPETITIONS = new Set<string>(["Serie C", "Ligue 3"]);
+const CLUB_NAME_NOISE = new Set([
+  "ac", "afc", "as", "asd", "calcio", "fc", "sc", "ss", "ssc", "ssd", "us", "usd",
+]);
 
 const INTEREST_BUCKETS = [
   { key: "top", label: "+ de 10", className: "is-top" },
@@ -82,6 +91,23 @@ const TEAM_ALIASES: Record<string, Record<string, string>> = {
     "torremolinos": "juventud torremolinos",
     "juventud torremolinos": "juventud torremolinos",
     "juventud torremolinos cf": "juventud torremolinos",
+    "villarreal b u23": "villarreal b",
+    "merida": "merida ad",
+    "ad merida": "merida ad",
+    "merida ad": "merida ad",
+    "mirandes": "mirandes",
+    "cd mirandes": "mirandes",
+    "ourense": "union deportiva ourense",
+    "ud ourense": "union deportiva ourense",
+    "union deportiva ourense": "union deportiva ourense",
+    "real union": "real union club",
+    "real union club": "real union club",
+    "alcorcon": "ad alcorcon",
+    "ad alcorcon": "ad alcorcon",
+    "aguilas": "cda aguilas",
+    "aguilas fc": "cda aguilas",
+    "cda aguilas": "cda aguilas",
+    "cda aguilas fc": "cda aguilas",
   },
   "2RFEF": {
     "alaves b": "deportivo alaves b",
@@ -129,9 +155,9 @@ const TEAM_ALIASES: Record<string, Record<string, string>> = {
     "ud sanse": "s s reyes",
     "s s reyes": "s s reyes",
     "san sebastian de los reyes": "s s reyes",
-    "ourense": "union deportiva ourense",
-    "ud ourense": "union deportiva ourense",
-    "union deportiva ourense": "union deportiva ourense",
+    // Desde 2026/27 la UD Ourense juega en 1RFEF; en 2RFEF "Ourense" es el Ourense CF.
+    "ourense": "ourense cf",
+    "ourense cf": "ourense cf",
     "lleida": "ce atletic lleida 2019",
     "atletic lleida": "ce atletic lleida 2019",
     "atletic lledia": "ce atletic lleida 2019",
@@ -175,6 +201,15 @@ const TEAM_ALIASES: Record<string, Record<string, string>> = {
     "marino de luanco": "marino de luanco",
     "ucam": "ucam murcia",
     "ucam murcia": "ucam murcia",
+    "guadalajara": "guadalajara",
+    "cd guadalajara": "guadalajara",
+    "conquense": "conquense",
+    "ub conquense": "conquense",
+    "atletico baleares": "cd atletico baleares",
+    "cd atletico baleares": "cd atletico baleares",
+    "salamanca cf": "salamanca uds",
+    "salamanca cf uds": "salamanca uds",
+    "salamanca uds": "salamanca uds",
   },
 };
 
@@ -201,12 +236,26 @@ function competitionKey(value: string | null | undefined) {
   if (normalized.includes("1rfef") || normalized.includes("1 rfef") || normalized.includes("primera")) {
     return "1RFEF";
   }
+  if (/\bserie c\b/.test(normalized)) {
+    return "Serie C";
+  }
+  // Ligue 3 es el antiguo Championnat National (no confundir con National 1/2).
+  if (/\bligue 3\b/.test(normalized) || normalized === "national" || normalized === "francia national") {
+    return "Ligue 3";
+  }
   return "";
 }
 
 function canonicalTeamName(teamName: string | null | undefined, competition: string) {
   const normalized = normalizeText(teamName);
-  return TEAM_ALIASES[competition]?.[normalized] || normalized;
+  const alias = TEAM_ALIASES[competition]?.[normalized];
+  if (alias) return alias;
+  if (!LOOSE_NAME_COMPETITIONS.has(competition)) return normalized;
+  const loose = normalized
+    .split(" ")
+    .filter((token) => !CLUB_NAME_NOISE.has(token) && !/^(18|19|20)\d{2}$/.test(token))
+    .join(" ");
+  return loose || normalized;
 }
 
 function getInterest(total: number) {
@@ -735,10 +784,16 @@ function InterestDistributionChart({
   );
 }
 
-function CalendarOverviewCharts({ matches }: { matches: EnrichedMatch[] }) {
+function CalendarOverviewCharts({
+  competitions,
+  matches,
+}: {
+  competitions: CompetitionName[];
+  matches: EnrichedMatch[];
+}) {
   return (
-    <section className="calendar-overview-charts">
-      {COMPETITIONS.map((competition) => {
+    <section className={`calendar-overview-charts${competitions.length === 1 ? " is-single" : ""}`}>
+      {competitions.map((competition) => {
         const activeRoundKey = defaultRoundKey(matches, competition);
         const roundOptions = buildRoundOptions(matches, competition);
         const activeRound = roundOptions.find((option) => option.key === activeRoundKey);
@@ -832,7 +887,7 @@ function CompetitionCalendarSection({
   matches,
   onOpenPlayer,
 }: {
-  competition: "1RFEF" | "2RFEF";
+  competition: CompetitionName;
   logoMap: TeamLogoMap;
   matches: EnrichedMatch[];
   onOpenPlayer: (player: CalendarPlayer) => void;
@@ -841,28 +896,15 @@ function CompetitionCalendarSection({
     () => matches.filter((match) => competitionKey(match.competition) === competition),
     [competition, matches],
   );
-  const groups = useMemo(
-    () => Array.from(new Set(competitionMatches.map((match) => match.group_name || "Sin grupo"))).sort(sortGroups),
-    [competitionMatches],
-  );
   const rounds = useMemo(() => buildRoundOptions(competitionMatches, competition), [competition, competitionMatches]);
   const playoffDatesByGroup = useMemo(() => groupDateOrder(competitionMatches), [competitionMatches]);
   const defaultSelectedRoundKey = defaultRoundKey(matches, competition);
 
-  const [selectedGroups, setSelectedGroups] = useState<string[]>(groups);
   const [selectedRoundKey, setSelectedRoundKey] = useState<string | null>(null);
 
   const activeRoundKey = selectedRoundKey ?? defaultSelectedRoundKey;
-  const safeSelectedGroups = selectedGroups.length ? selectedGroups : groups;
   const currentIndex = rounds.findIndex((round) => round.key === activeRoundKey);
   const activeRound = rounds.find((round) => round.key === activeRoundKey);
-
-  useEffect(() => {
-    setSelectedGroups((current) => {
-      const validGroups = current.filter((group) => groups.includes(group));
-      return validGroups.length ? validGroups : groups;
-    });
-  }, [groups]);
 
   useEffect(() => {
     if (!rounds.length) return;
@@ -875,8 +917,7 @@ function CompetitionCalendarSection({
     .filter(
       (match) =>
         competitionKey(match.competition) === competition &&
-        roundInfo(match, playoffDatesByGroup).key === activeRoundKey &&
-        safeSelectedGroups.includes(match.group_name || "Sin grupo"),
+        roundInfo(match, playoffDatesByGroup).key === activeRoundKey,
     )
     .sort((a, b) => {
       const groupCompare = sortGroups(a.group_name || "Sin grupo", b.group_name || "Sin grupo");
@@ -890,12 +931,6 @@ function CompetitionCalendarSection({
   const interestingMatches = visibleMatches.filter((match) => match.playersTotal > 0);
   const playersDetected = visibleMatches.reduce((total, match) => total + match.playersTotal, 0);
 
-  function toggleGroup(group: string) {
-    setSelectedGroups((current) =>
-      current.includes(group) ? current.filter((value) => value !== group) : [...current, group],
-    );
-  }
-
   return (
     <section className="calendar-competition-section">
       <div className="section-title">
@@ -903,19 +938,7 @@ function CompetitionCalendarSection({
         <span>{activeRound?.label || "Sin fase"}</span>
       </div>
 
-      <div className="calendar-section-controls">
-        <div className="calendar-chip-group">
-          {groups.map((group) => (
-            <button
-              className={safeSelectedGroups.includes(group) ? "is-active" : ""}
-              key={group}
-              onClick={() => toggleGroup(group)}
-              type="button"
-            >
-              {group}
-            </button>
-          ))}
-        </div>
+      <div className="calendar-section-controls calendar-section-controls--round">
         <label>
           Ronda
           <select
@@ -1004,6 +1027,12 @@ export function CalendarView({
 }) {
   const [source, setSource] = useState<PlayerSource>("general");
   const [onlyWithPlayers, setOnlyWithPlayers] = useState(false);
+  const [storedCompetition, setStoredCompetition] = useSessionState<CompetitionName>(
+    "calendar.competition",
+    "1RFEF",
+  );
+  // Vacio = todos los grupos de la liga elegida.
+  const [selectedGroups, setSelectedGroups] = useSessionState<string[]>("calendar.groups", []);
 
   const enrichedMatches = useMemo(() => {
     const playerIndex = buildPlayerIndex(source, reports, campogramPlayers, campogramReports, {
@@ -1024,6 +1053,51 @@ export function CalendarView({
   ]);
 
   const logoMap = useMemo(() => buildTeamLogoMap(objectiveMatches), [objectiveMatches]);
+  const availableCompetitions = useMemo(
+    () =>
+      COMPETITIONS.filter((competition) =>
+        matches.some((match) => competitionKey(match.competition) === competition),
+      ),
+    [matches],
+  );
+  const activeCompetition = availableCompetitions.includes(storedCompetition)
+    ? storedCompetition
+    : availableCompetitions[0];
+  const competitionGroups = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          matches
+            .filter((match) => competitionKey(match.competition) === activeCompetition)
+            .map((match) => match.group_name || "Sin grupo"),
+        ),
+      ).sort(sortGroups),
+    [activeCompetition, matches],
+  );
+  const activeGroups = selectedGroups.filter((group) => competitionGroups.includes(group));
+  const scopedMatches = useMemo(
+    () =>
+      enrichedMatches.filter(
+        (match) =>
+          competitionKey(match.competition) === activeCompetition &&
+          (!activeGroups.length || activeGroups.includes(match.group_name || "Sin grupo")),
+      ),
+    [activeCompetition, activeGroups, enrichedMatches],
+  );
+
+  function selectCompetition(competition: CompetitionName) {
+    setStoredCompetition(competition);
+    setSelectedGroups([]);
+  }
+
+  function toggleGroup(group: string) {
+    setSelectedGroups((current) => {
+      const valid = current.filter((value) => competitionGroups.includes(value));
+      const next = valid.includes(group) ? valid.filter((value) => value !== group) : [...valid, group];
+      return next.length === competitionGroups.length ? [] : next;
+    });
+  }
+
   const openPlayer =
     source === "general"
       ? (player: CalendarPlayer) => onOpenGeneralPlayer(player.playerName)
@@ -1031,9 +1105,53 @@ export function CalendarView({
 
   return (
     <section className="content-card calendar-view">
+      {availableCompetitions.length > 0 && (
+        <div className="calendar-league-bar">
+          <div className="calendar-league-bar__row">
+            <span>Liga</span>
+            <div className="calendar-chip-group">
+              {availableCompetitions.map((competition) => (
+                <button
+                  className={competition === activeCompetition ? "is-active" : ""}
+                  key={competition}
+                  onClick={() => selectCompetition(competition)}
+                  type="button"
+                >
+                  {competition}
+                </button>
+              ))}
+            </div>
+          </div>
+          {competitionGroups.length > 1 && (
+            <div className="calendar-league-bar__row">
+              <span>Grupos</span>
+              <div className="calendar-chip-group">
+                <button
+                  className={!activeGroups.length ? "is-active" : ""}
+                  onClick={() => setSelectedGroups([])}
+                  type="button"
+                >
+                  Todos
+                </button>
+                {competitionGroups.map((group) => (
+                  <button
+                    className={activeGroups.includes(group) ? "is-active" : ""}
+                    key={group}
+                    onClick={() => toggleGroup(group)}
+                    type="button"
+                  >
+                    {group}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="section-title">
         <h2>Planificación de partidos</h2>
-        <span>{enrichedMatches.length} visibles</span>
+        <span>{scopedMatches.length} visibles</span>
       </div>
 
       <div className="calendar-global-controls">
@@ -1054,17 +1172,20 @@ export function CalendarView({
         </label>
       </div>
 
-      <CalendarOverviewCharts matches={enrichedMatches} />
-
-      {COMPETITIONS.map((competition) => (
-        <CompetitionCalendarSection
-          competition={competition}
-          key={competition}
-          logoMap={logoMap}
-          matches={enrichedMatches}
-          onOpenPlayer={openPlayer}
-        />
-      ))}
+      {activeCompetition ? (
+        <>
+          <CalendarOverviewCharts competitions={[activeCompetition]} matches={scopedMatches} />
+          <CompetitionCalendarSection
+            competition={activeCompetition}
+            key={activeCompetition}
+            logoMap={logoMap}
+            matches={scopedMatches}
+            onOpenPlayer={openPlayer}
+          />
+        </>
+      ) : (
+        <div className="empty-state">No hay calendario cargado para esta temporada.</div>
+      )}
     </section>
   );
 }

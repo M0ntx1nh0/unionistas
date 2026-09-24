@@ -7,3 +7,4 @@ mplsoccer>=1.4,<2.0
 reportlab>=4.2,<5.0
 python-dotenv>=1.0,<2.0
 supabase>=2.10,<3.0
+curl_cffi>=0.7,<1.0

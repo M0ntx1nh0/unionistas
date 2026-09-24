@@ -5,13 +5,22 @@ from datetime import UTC, datetime
 import re
 import unicodedata
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 import streamlit as st
 
+try:
+    # Sofascore bloquea (403) clientes cuya huella TLS no es de navegador.
+    from curl_cffi import requests as browser_requests
+except ImportError:  # pragma: no cover - fallback si no esta instalado
+    browser_requests = None
+
 from src.scouting_app.google_sheets import read_google_worksheet, write_google_worksheet
 
+
+MATCH_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 SOFASCORE_HEADERS = {
     "User-Agent": (
@@ -19,6 +28,8 @@ SOFASCORE_HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    "Referer": "https://www.sofascore.com/",
 }
 
 SOFASCORE_ROUNDS_URL = (
@@ -218,22 +229,80 @@ class CompetitionConfig:
     unique_tournament_id: int
     season_id: int
     label: str
+    # Grupo fijo para torneos que Sofascore publica sin groupName
+    # (cada girone de Serie C es un torneo propio; Ligue 3 es grupo unico).
+    group_name: str = ""
 
 
-SOFASCORE_COMPETITIONS = {
-    "1RFEF": CompetitionConfig(
-        key="1RFEF",
-        unique_tournament_id=17073,
-        season_id=77727,
-        label="1RFEF",
-    ),
-    "2RFEF": CompetitionConfig(
-        key="2RFEF",
-        unique_tournament_id=544,
-        season_id=77733,
-        label="2RFEF",
-    ),
+SOFASCORE_COMPETITIONS_BY_SEASON = {
+    "2025/26": {
+        "1RFEF": CompetitionConfig(
+            key="1RFEF",
+            unique_tournament_id=17073,
+            season_id=77727,
+            label="1RFEF",
+        ),
+        "2RFEF": CompetitionConfig(
+            key="2RFEF",
+            unique_tournament_id=544,
+            season_id=77733,
+            label="2RFEF",
+        ),
+    },
+    "2026/27": {
+        "1RFEF": CompetitionConfig(
+            key="1RFEF",
+            unique_tournament_id=17073,
+            season_id=97382,
+            label="1RFEF",
+        ),
+        "2RFEF": CompetitionConfig(
+            key="2RFEF",
+            unique_tournament_id=544,
+            season_id=97389,
+            label="2RFEF",
+        ),
+        "SERIEC_A": CompetitionConfig(
+            key="SERIEC_A",
+            unique_tournament_id=11445,
+            season_id=99662,
+            label="Serie C",
+            group_name="Girone A",
+        ),
+        "SERIEC_B": CompetitionConfig(
+            key="SERIEC_B",
+            unique_tournament_id=11447,
+            season_id=99668,
+            label="Serie C",
+            group_name="Girone B",
+        ),
+        "SERIEC_C": CompetitionConfig(
+            key="SERIEC_C",
+            unique_tournament_id=11446,
+            season_id=99663,
+            label="Serie C",
+            group_name="Girone C",
+        ),
+        "LIGUE3": CompetitionConfig(
+            key="LIGUE3",
+            unique_tournament_id=183,
+            season_id=97457,
+            label="Ligue 3",
+            group_name="Grupo único",
+        ),
+    },
 }
+
+
+def get_sofascore_competitions(season_label: str) -> dict[str, CompetitionConfig]:
+    competitions = SOFASCORE_COMPETITIONS_BY_SEASON.get(season_label)
+    if competitions is None:
+        available = ", ".join(SOFASCORE_COMPETITIONS_BY_SEASON)
+        raise ValueError(
+            f"Temporada de calendario no configurada: {season_label}. "
+            f"Disponibles: {available}."
+        )
+    return competitions
 
 
 def _get_calendar_sheet_config() -> dict[str, str]:
@@ -267,7 +336,7 @@ def _ensure_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     return normalized[columns].copy()
 
 
-def load_calendar_matches() -> pd.DataFrame:
+def _load_all_calendar_matches() -> pd.DataFrame:
     config = _get_calendar_sheet_config()
     df = read_google_worksheet(
         config["spreadsheet_id"],
@@ -299,6 +368,19 @@ def load_calendar_matches() -> pd.DataFrame:
     )
 
 
+def load_calendar_matches(season_label: str = "2025/26") -> pd.DataFrame:
+    df = _load_all_calendar_matches()
+    if df.empty:
+        return df
+
+    source_season_ids = {
+        competition.season_id
+        for competition in get_sofascore_competitions(season_label).values()
+    }
+    source_season = pd.to_numeric(df["season_id"], errors="coerce")
+    return df[source_season.isin(source_season_ids)].copy()
+
+
 def load_team_name_map() -> pd.DataFrame:
     config = _get_calendar_sheet_config()
     df = read_google_worksheet(
@@ -316,7 +398,10 @@ def _sheet_timestamp() -> str:
 
 
 def _fetch_json(url: str) -> dict[str, Any]:
-    response = requests.get(url, headers=SOFASCORE_HEADERS, timeout=25)
+    if browser_requests is not None:
+        response = browser_requests.get(url, impersonate="chrome", timeout=25)
+    else:
+        response = requests.get(url, headers=SOFASCORE_HEADERS, timeout=25)
     response.raise_for_status()
     payload = response.json()
     return payload if isinstance(payload, dict) else {}
@@ -342,7 +427,7 @@ def _parse_datetime_components(timestamp: Any) -> tuple[str, str]:
         return "", ""
 
     try:
-        parsed = datetime.fromtimestamp(int(timestamp), tz=UTC).astimezone()
+        parsed = datetime.fromtimestamp(int(timestamp), tz=UTC).astimezone(MATCH_TIMEZONE)
     except (TypeError, ValueError, OSError):
         return "", ""
     return parsed.strftime("%Y-%m-%d"), parsed.strftime("%H:%M")
@@ -351,6 +436,7 @@ def _parse_datetime_components(timestamp: Any) -> tuple[str, str]:
 def _normalize_round_events(
     events: list[dict[str, Any]],
     competition_label: str,
+    default_group: str = "",
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     updated_at = _sheet_timestamp()
@@ -370,7 +456,7 @@ def _normalize_round_events(
         rows.append(
             {
                 "competition": competition_label,
-                "group": tournament.get("groupName") or "",
+                "group": tournament.get("groupName") or default_group,
                 "matchday": (event.get("roundInfo") or {}).get("round") or "",
                 "event_id": event.get("id") or "",
                 "date": date_value,
@@ -401,7 +487,7 @@ def _fetch_round_matches(config: CompetitionConfig, round_number: int) -> pd.Dat
         round_number=round_number,
     )
     payload = _fetch_json(url)
-    return _normalize_round_events(payload.get("events", []), config.label)
+    return _normalize_round_events(payload.get("events", []), config.label, config.group_name)
 
 
 def _to_int_set(series: pd.Series) -> set[int]:
@@ -416,7 +502,11 @@ def _determine_rounds_to_update(
     current_round: int | None,
     full_refresh: bool,
 ) -> list[int]:
-    competition_existing = existing_df[existing_df["competition"] == config.label].copy()
+    source_season = pd.to_numeric(existing_df["season_id"], errors="coerce")
+    competition_existing = existing_df[
+        (existing_df["competition"] == config.label)
+        & (source_season == config.season_id)
+    ].copy()
     if competition_existing.empty:
         return all_rounds
 
@@ -470,11 +560,18 @@ def _merge_matches(existing_df: pd.DataFrame, refreshed_df: pd.DataFrame) -> pd.
     return _ensure_columns(merged, CALENDAR_MATCHES_COLUMNS)
 
 
-def refresh_calendar_matches(full_refresh: bool = False) -> pd.DataFrame:
-    existing_df = load_calendar_matches()
+def refresh_calendar_matches(
+    full_refresh: bool = False,
+    season_label: str = "2025/26",
+) -> pd.DataFrame:
+    all_existing_df = _load_all_calendar_matches()
+    competitions = get_sofascore_competitions(season_label)
+    source_season_ids = {competition.season_id for competition in competitions.values()}
+    source_season = pd.to_numeric(all_existing_df["season_id"], errors="coerce")
+    existing_df = all_existing_df[source_season.isin(source_season_ids)].copy()
     refreshed_frames: list[pd.DataFrame] = []
 
-    for config in SOFASCORE_COMPETITIONS.values():
+    for config in competitions.values():
         all_rounds, current_round = _fetch_rounds(config)
         if not all_rounds:
             continue
@@ -495,14 +592,14 @@ def refresh_calendar_matches(full_refresh: bool = False) -> pd.DataFrame:
         if refreshed_frames
         else pd.DataFrame(columns=CALENDAR_MATCHES_COLUMNS)
     )
-    merged_df = _merge_matches(existing_df, refreshed_df)
+    merged_df = _merge_matches(all_existing_df, refreshed_df)
     config = _get_calendar_sheet_config()
     write_google_worksheet(
         config["spreadsheet_id"],
         config["matches_worksheet_name"],
         merged_df,
     )
-    return load_calendar_matches()
+    return load_calendar_matches(season_label)
 
 
 def _strip_accents(value: Any) -> str:

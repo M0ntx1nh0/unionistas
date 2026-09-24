@@ -1,8 +1,10 @@
 """Sincroniza calendario desde Google Sheets hacia Supabase.
 
-Por defecto ejecuta una simulacion sin escribir datos. Para insertar/actualizar:
+Por defecto ejecuta una simulacion sin escribir datos. Para descargar la fuente
+y despues insertar/actualizar 2026/27:
 
-    .venv/bin/python scripts/sync_calendar_to_supabase.py --apply
+    .venv/bin/python scripts/sync_calendar_to_supabase.py \
+        --season 2026/27 --refresh-source --full-refresh --apply
 """
 
 from __future__ import annotations
@@ -25,10 +27,11 @@ from src.scouting_app.calendar_data import (  # noqa: E402
     canonicalize_team_name,
     load_calendar_matches,
     load_team_name_map,
+    refresh_calendar_matches,
 )
 
 
-SEASON_LABEL = "2025/26"
+DEFAULT_SEASON_LABEL = "2026/27"
 
 
 def _clean_text(value: Any) -> str | None:
@@ -113,17 +116,17 @@ def _get_supabase_client():
     return create_client(supabase_url, service_role_key)
 
 
-def _get_season_id(client) -> str:
+def _get_season_id(client, season_label: str) -> str:
     response = (
         client.table("seasons")
         .select("id,label")
-        .eq("label", SEASON_LABEL)
+        .eq("label", season_label)
         .limit(1)
         .execute()
     )
     rows = response.data or []
     if not rows:
-        raise RuntimeError(f"No existe la temporada {SEASON_LABEL} en Supabase.")
+        raise RuntimeError(f"No existe la temporada {season_label} en Supabase.")
     return str(rows[0]["id"])
 
 
@@ -172,13 +175,30 @@ def _team_map_payload(row: pd.Series, season_id: str) -> dict[str, Any]:
     }
 
 
-def sync_calendar(apply: bool) -> None:
-    calendar_df = load_calendar_matches()
+def sync_calendar(
+    apply: bool,
+    season_label: str,
+    refresh_source: bool,
+    full_refresh: bool,
+) -> None:
+    if refresh_source:
+        calendar_df = refresh_calendar_matches(
+            full_refresh=full_refresh,
+            season_label=season_label,
+        )
+    else:
+        calendar_df = load_calendar_matches(season_label)
     team_map_df = load_team_name_map()
 
     print("Resumen calendario")
     print(f"- Modo: {'ESCRITURA' if apply else 'SIMULACION'}")
+    print(f"- Temporada destino: {season_label}")
+    print(f"- Fuente actualizada: {'SI' if refresh_source else 'NO'}")
     print(f"- Partidos detectados: {len(calendar_df)}")
+    if not calendar_df.empty:
+        counts = calendar_df.groupby("competition", dropna=False).size()
+        for competition, count in counts.items():
+            print(f"  - {competition}: {count}")
     print(f"- Mapeos de equipo detectados: {len(team_map_df)}")
 
     if not apply:
@@ -186,7 +206,7 @@ def sync_calendar(apply: bool) -> None:
         return
 
     client = _get_supabase_client()
-    season_id = _get_season_id(client)
+    season_id = _get_season_id(client, season_label)
 
     match_payloads = [
         _match_payload(row, season_id)
@@ -222,8 +242,29 @@ def main() -> None:
         action="store_true",
         help="Escribe los datos en Supabase. Sin este flag solo simula.",
     )
+    parser.add_argument(
+        "--season",
+        default=DEFAULT_SEASON_LABEL,
+        choices=["2025/26", "2026/27"],
+        help="Temporada que se lee y se sincroniza.",
+    )
+    parser.add_argument(
+        "--refresh-source",
+        action="store_true",
+        help="Descarga Sofascore y actualiza la hoja antes de sincronizar.",
+    )
+    parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help="Descarga todas las jornadas de la temporada elegida.",
+    )
     args = parser.parse_args()
-    sync_calendar(apply=args.apply)
+    sync_calendar(
+        apply=args.apply,
+        season_label=args.season,
+        refresh_source=args.refresh_source,
+        full_refresh=args.full_refresh,
+    )
 
 
 if __name__ == "__main__":

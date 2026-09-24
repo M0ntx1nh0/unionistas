@@ -1021,6 +1021,32 @@ p {
   width: 1.1rem;
 }
 
+.calendar-league-bar {
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(10, 10, 10, 0.08);
+  border-radius: 22px;
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+}
+
+.calendar-league-bar__row {
+  align-items: center;
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: 5.5rem 1fr;
+}
+
+.calendar-league-bar__row > span {
+  color: #3f3f3a;
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.calendar-overview-charts.is-single {
+  grid-template-columns: 1fr;
+}
+
 .calendar-competition-section {
   display: grid;
   gap: 1rem;
@@ -1031,6 +1057,11 @@ p {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr 180px 180px;
+}
+
+.calendar-section-controls--round {
+  grid-template-columns: minmax(180px, 280px) 180px;
+  justify-content: start;
 }
 
 .calendar-chip-group {
@@ -5178,6 +5209,7 @@ p {
   .filter-panel--reports,
   .filter-panel--players,
   .calendar-global-controls,
+  .calendar-league-bar__row,
   .calendar-overview-charts,
   .calendar-section-controls,
   .calendar-mini-metrics,
