@@ -654,12 +654,14 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - Competiciones por temporada en `SOFASCORE_COMPETITIONS_BY_SEASON` (`calendar_data.py`). En 2026/27:
   - `1RFEF` (17073 / 97382) y `2RFEF` (544 / 97389).
   - `Serie C`: tres torneos Sofascore (Girone A 11445/99662, B 11447/99668, C 11446/99663) unificados como competición `Serie C` con grupo fijo `Girone X`.
-  - `Ligue 3` (183 / 97457), el antiguo Championnat National, grupo `Grupo único`. No confundir con `National 1` (28153), que es la 4ª categoría y no está cargada.
+  - `Ligue 3` (183 / 97457), el antiguo Championnat National (3ª categoría), grupo `Grupo único`.
+  - `National 1` (28153 / 99074), la antigua National 2 (4ª categoría), grupos `Group A/B/C`. En Sofascore el `Group C` arrastra partidos `canceled` de un calendario regenerado.
 - Carga manual: `.venv/bin/python scripts/sync_calendar_to_supabase.py --season 2026/27 --refresh-source --apply` (`--full-refresh` para rehacer todas las jornadas). Sin `--full-refresh` solo refresca jornadas cercanas y pendientes. `--refresh-source` escribe en la hoja aunque no haya `--apply`.
 - `CalendarView`:
   - Selector de `Liga` (solo las que tienen partidos en la temporada) y filtro multiselección de `Grupos` antes de `Planificación de partidos`; se muestra una liga cada vez. Estado persistido en `sessionStorage` (`calendar.competition`, `calendar.groups`).
-  - `competitionKey` reconoce `1RFEF`, `2RFEF`, `Serie C` e `Italia (Serie C)`, `Ligue 3` / `Francia (Ligue 3)` / `National` (nombre antiguo).
-  - En `Serie C` y `Ligue 3` el emparejamiento ignora siglas de club y años (`AC Trento` = `Trento`, `SSC Bari` = `Bari`); en 1RFEF/2RFEF se mantiene el mapa `TEAM_ALIASES`.
+  - `competitionKey` reconoce `1RFEF`, `2RFEF`, `Serie C` e `Italia (Serie C)`, `Ligue 3` / `Francia (Ligue 3)` / `National` (nombre antiguo) y `National 1` / `Francia (National 1)`.
+  - En `Serie C`, `Ligue 3` y `National 1` el emparejamiento ignora siglas de club y años (`AC Trento` = `Trento`, `SSC Bari` = `Bari`); en 1RFEF/2RFEF se mantiene el mapa `TEAM_ALIASES` (National 1 solo necesita `ESTAC Troyes B` → `Troyes 2`).
+  - Los partidos `canceled` y `postponed` de Sofascore no se ocultan: la tarjeta muestra la etiqueta `Cancelado` (borde rojo, atenuada) o `Aplazado` (borde naranja).
   - Alias revisados para ascensos/descensos 2026/27 (Mérida, Mirandés, Real Unión, Alcorcón, Águilas, Villarreal B U23, Guadalajara, Conquense, Atlético Baleares, Salamanca CF UDS…). En 2RFEF `Ourense` es el **Ourense CF**; la **UD Ourense** está en 1RFEF.
 
 ## 20. UScout

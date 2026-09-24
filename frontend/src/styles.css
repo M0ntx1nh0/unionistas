@@ -1244,6 +1244,38 @@ p {
   font-weight: 900;
 }
 
+.calendar-match-status {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 950;
+  margin-left: 0.6rem;
+  padding: 0.2rem 0.7rem;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.calendar-match-status.is-canceled {
+  background: #fdecec;
+  border: 1px solid #c62828;
+  color: #b71c1c;
+}
+
+.calendar-match-status.is-postponed {
+  background: #fff4e0;
+  border: 1px solid #e08a00;
+  color: #a35f00;
+}
+
+.calendar-match-card.is-canceled {
+  border-left-color: #c62828;
+  opacity: 0.72;
+}
+
+.calendar-match-card.is-postponed {
+  border-left-color: #e08a00;
+}
+
 .calendar-match-card__teams {
   align-items: center;
   display: flex;

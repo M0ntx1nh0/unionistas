@@ -290,6 +290,12 @@ SOFASCORE_COMPETITIONS_BY_SEASON = {
             label="Ligue 3",
             group_name="Grupo único",
         ),
+        "NATIONAL1": CompetitionConfig(
+            key="NATIONAL1",
+            unique_tournament_id=28153,
+            season_id=99074,
+            label="National 1",
+        ),
     },
 }
 

@@ -37,12 +37,12 @@ type RoundOption = {
   firstDate: string;
 };
 
-const COMPETITIONS = ["1RFEF", "2RFEF", "Serie C", "Ligue 3"] as const;
+const COMPETITIONS = ["1RFEF", "2RFEF", "Serie C", "Ligue 3", "National 1"] as const;
 type CompetitionName = (typeof COMPETITIONS)[number];
 
 // En ligas extranjeras los informes usan el nombre oficial del club ("AC Trento",
 // "SSC Bari") y Sofascore el corto ("Trento", "Bari"): se ignoran siglas y años.
-const LOOSE_NAME_COMPETITIONS = new Set<string>(["Serie C", "Ligue 3"]);
+const LOOSE_NAME_COMPETITIONS = new Set<string>(["Serie C", "Ligue 3", "National 1"]);
 const CLUB_NAME_NOISE = new Set([
   "ac", "afc", "as", "asd", "calcio", "fc", "sc", "ss", "ssc", "ssd", "us", "usd",
 ]);
@@ -108,6 +108,11 @@ const TEAM_ALIASES: Record<string, Record<string, string>> = {
     "aguilas fc": "cda aguilas",
     "cda aguilas": "cda aguilas",
     "cda aguilas fc": "cda aguilas",
+  },
+  "National 1": {
+    "estac troyes b": "troyes 2",
+    "troyes b": "troyes 2",
+    "troyes 2": "troyes 2",
   },
   "2RFEF": {
     "alaves b": "deportivo alaves b",
@@ -239,7 +244,10 @@ function competitionKey(value: string | null | undefined) {
   if (/\bserie c\b/.test(normalized)) {
     return "Serie C";
   }
-  // Ligue 3 es el antiguo Championnat National (no confundir con National 1/2).
+  // Desde 2026/27: Ligue 3 es el antiguo National y National 1 el antiguo National 2.
+  if (/\bnational 1\b/.test(normalized)) {
+    return "National 1";
+  }
   if (/\bligue 3\b/.test(normalized) || normalized === "national" || normalized === "francia national") {
     return "Ligue 3";
   }
@@ -257,6 +265,12 @@ function canonicalTeamName(teamName: string | null | undefined, competition: str
     .join(" ");
   return loose || normalized;
 }
+
+// Estados de Sofascore que conviene señalar: el partido sigue visible pero su fecha no vale.
+const MATCH_STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  canceled: { label: "Cancelado", className: "is-canceled" },
+  postponed: { label: "Aplazado", className: "is-postponed" },
+};
 
 function getInterest(total: number) {
   if (total > 10) return { key: "top", label: "+ de 10 jugadores", className: "is-top" };
@@ -832,8 +846,9 @@ function CalendarMatchCard({
   roundLabel: string;
 }) {
   const competition = competitionKey(match.competition);
+  const statusInfo = MATCH_STATUS_LABELS[normalizeText(match.status)];
   return (
-    <article className="calendar-match-card">
+    <article className={`calendar-match-card${statusInfo ? ` ${statusInfo.className}` : ""}`}>
       <div className="calendar-match-card__main">
         <span className="calendar-match-card__meta">
           {competitionKey(match.competition) || match.competition} | {match.group_name || "Sin grupo"} |{" "}
@@ -852,6 +867,9 @@ function CalendarMatchCard({
         </div>
         <div className="calendar-match-card__date">
           {formatDate(match.match_date)} | {formatTime(match.kickoff_time)}
+          {statusInfo && (
+            <span className={`calendar-match-status ${statusInfo.className}`}>{statusInfo.label}</span>
+          )}
         </div>
         {(match.venue || match.city) && (
           <div className="calendar-match-card__venue">
