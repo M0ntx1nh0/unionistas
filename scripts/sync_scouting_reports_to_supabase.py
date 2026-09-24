@@ -2,7 +2,7 @@
 
 Por defecto ejecuta una simulacion sin escribir datos. Para insertar/actualizar:
 
-    .venv/bin/python scripts/sync_scouting_reports_to_supabase.py --apply
+    .venv/bin/python scripts/sync_scouting_reports_to_supabase.py --season 2026/27 --apply
 """
 
 from __future__ import annotations
@@ -26,9 +26,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.scouting_app.calendar_data import canonicalize_team_name, competition_family  # noqa: E402
 from src.scouting_app.data_processing import load_scouting_reports  # noqa: E402
 from src.scouting_app.google_sheets import _get_sheet_config  # noqa: E402
+from scripts.player_identity import attach_player_ids  # noqa: E402
 
 
-SEASON_LABEL = "2025/26"
+DEFAULT_SEASON_LABEL = "2026/27"
 SOURCE_SYSTEM = "google_sheets_subjective"
 
 
@@ -130,17 +131,17 @@ def _get_supabase_client():
     return create_client(supabase_url, service_role_key)
 
 
-def _get_season_id(client) -> str:
+def _get_season_id(client, season_label: str) -> str:
     response = (
         client.table("seasons")
         .select("id,label")
-        .eq("label", SEASON_LABEL)
+        .eq("label", season_label)
         .limit(1)
         .execute()
     )
     rows = response.data or []
     if not rows:
-        raise RuntimeError(f"No existe la temporada {SEASON_LABEL} en Supabase.")
+        raise RuntimeError(f"No existe la temporada {season_label} en Supabase.")
     return str(rows[0]["id"])
 
 
@@ -219,9 +220,9 @@ def _report_payload(
     }
 
 
-def sync_scouting_reports(apply: bool) -> None:
-    reports_df = load_scouting_reports()
-    source_config = _get_sheet_config()
+def sync_scouting_reports(apply: bool, season_label: str) -> None:
+    reports_df = load_scouting_reports(season_label)
+    source_config = _get_sheet_config(season_label)
 
     if reports_df.empty:
         print("No hay informes subjetivos para sincronizar.")
@@ -232,6 +233,8 @@ def sync_scouting_reports(apply: bool) -> None:
 
     print("Resumen informes subjetivos")
     print(f"- Modo: {'ESCRITURA' if apply else 'SIMULACION'}")
+    print(f"- Temporada destino: {season_label}")
+    print(f"- Pestaña origen: {source_config.get('worksheet_name')}")
     print(f"- Filas detectadas: {len(reports_df)}")
     print(f"- Informes con jugador: {len(valid_reports)}")
     print(f"- Jugadores unicos: {valid_reports['nombre_jugador'].nunique()}")
@@ -242,7 +245,7 @@ def sync_scouting_reports(apply: bool) -> None:
         return
 
     client = _get_supabase_client()
-    season_id = _get_season_id(client)
+    season_id = _get_season_id(client, season_label)
 
     payloads = [
         _report_payload(row, season_id, source_config, source_row_id=str(index))
@@ -251,6 +254,12 @@ def sync_scouting_reports(apply: bool) -> None:
     payloads, duplicate_reports = _dedupe_payloads(payloads)
     if duplicate_reports:
         print(f"- Informes duplicados omitidos antes de escribir: {duplicate_reports}")
+
+    linked_reports, created_players, pending_reports = attach_player_ids(client, payloads)
+    print(f"- Informes enlazados a player_id: {linked_reports}")
+    print(f"- Nuevas identidades internas: {created_players}")
+    if pending_reports:
+        print(f"- Informes pendientes de identidad: {pending_reports}")
 
     if payloads:
         client.table("scouting_reports").upsert(
@@ -269,8 +278,13 @@ def main() -> None:
         action="store_true",
         help="Escribe los datos en Supabase. Sin este flag solo simula.",
     )
+    parser.add_argument(
+        "--season",
+        default=DEFAULT_SEASON_LABEL,
+        help=f"Temporada destino (por defecto: {DEFAULT_SEASON_LABEL}).",
+    )
     args = parser.parse_args()
-    sync_scouting_reports(apply=args.apply)
+    sync_scouting_reports(apply=args.apply, season_label=args.season)
 
 
 if __name__ == "__main__":

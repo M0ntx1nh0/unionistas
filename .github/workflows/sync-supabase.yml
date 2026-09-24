@@ -19,6 +19,14 @@ on:
         required: true
         default: false
         type: boolean
+      season_label:
+        description: "Temporada destino"
+        required: true
+        default: "2026/27"
+        type: choice
+        options:
+          - "2025/26"
+          - "2026/27"
 
 jobs:
   sync:
@@ -54,6 +62,7 @@ jobs:
         env:
           TARGET: ${{ inputs.target }}
           DRY_RUN: ${{ inputs.dry_run }}
+          SEASON_LABEL: ${{ inputs.season_label }}
         run: |
           set -euo pipefail
 
@@ -76,21 +85,24 @@ jobs:
 
           case "$TARGET" in
             reports)
-              run_sync scripts/sync_scouting_reports_to_supabase.py
+              run_sync_with_args scripts/sync_scouting_reports_to_supabase.py --season "$SEASON_LABEL"
               ;;
             campograms)
+              test "$SEASON_LABEL" = "2025/26" || { echo "Campogramas 2026/27 aun no configurados"; exit 1; }
               run_sync scripts/sync_campograms_to_supabase.py
               ;;
             calendar)
-              run_sync scripts/sync_calendar_to_supabase.py
+              run_sync_with_args scripts/sync_calendar_to_supabase.py --season "$SEASON_LABEL" --refresh-source
               ;;
             wyscout)
+              test "$SEASON_LABEL" = "2025/26" || { echo "Wyscout 2026/27 aun no configurado"; exit 1; }
               run_sync_with_args scripts/sync_objective_players_to_supabase.py --source drive
               ;;
             all)
-              run_sync scripts/sync_scouting_reports_to_supabase.py
+              test "$SEASON_LABEL" = "2025/26" || { echo "La sincronizacion completa 2026/27 aun no esta disponible"; exit 1; }
+              run_sync_with_args scripts/sync_scouting_reports_to_supabase.py --season "$SEASON_LABEL"
               run_sync scripts/sync_campograms_to_supabase.py
-              run_sync scripts/sync_calendar_to_supabase.py
+              run_sync_with_args scripts/sync_calendar_to_supabase.py --season "$SEASON_LABEL" --refresh-source
               run_sync_with_args scripts/sync_objective_players_to_supabase.py --source drive
               ;;
             *)

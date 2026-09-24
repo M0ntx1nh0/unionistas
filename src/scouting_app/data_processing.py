@@ -35,6 +35,11 @@ COLUMN_RENAMES = {
     "Marca temporal": "marca_temporal",
 }
 
+LEGACY_COLUMN_ALIASES = {
+    "nombre_del_jugador_escribir_todo_en_mayusculas": "nombre_jugador",
+    "nacionalidad_en_caso_de_tener_dos_nacionalidades,_incluir_ambas.": "nacionalidad",
+}
+
 
 def _normalize_column_name(name: str) -> str:
     normalized = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
@@ -70,8 +75,8 @@ def _display_capability_token(value: str) -> str:
     return cleaned[:1].upper() + cleaned[1:] if cleaned else cleaned
 
 
-def load_scouting_reports() -> pd.DataFrame:
-    df = read_google_sheet()
+def load_scouting_reports(season_label: str | None = None) -> pd.DataFrame:
+    df = read_google_sheet(season_label)
 
     if df.empty:
         return df
@@ -83,6 +88,15 @@ def load_scouting_reports() -> pd.DataFrame:
     }
     df = df.rename(columns=rename_map)
     df = df.map(_normalize_text)
+
+    for legacy_column, canonical_column in LEGACY_COLUMN_ALIASES.items():
+        if legacy_column not in df.columns:
+            continue
+        if canonical_column in df.columns:
+            df[canonical_column] = df[canonical_column].combine_first(df[legacy_column])
+        else:
+            df[canonical_column] = df[legacy_column]
+        df = df.drop(columns=[legacy_column])
 
     if "demarcacion" in df.columns:
         split_positions = df["demarcacion"].apply(_split_positions)

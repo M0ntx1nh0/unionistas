@@ -43,7 +43,9 @@ export type DashboardCounts = {
 };
 
 export type PlayerSummary = {
+  player_id: string | null;
   player_name: string;
+  birth_year: number | null;
   team_name: string | null;
   competition: string | null;
   position: string | null;
@@ -55,6 +57,8 @@ export type PlayerSummary = {
 
 export type ScoutingReport = {
   id: string;
+  season_id: string | null;
+  player_id: string | null;
   player_name: string;
   scout_name: string | null;
   scout_email: string | null;
@@ -83,6 +87,61 @@ export type ScoutingReport = {
   rating_psychological: string | null;
   comments: string | null;
   raw_data: Record<string, unknown>;
+};
+
+export type UScoutShortlist = {
+  id: string;
+  season_id: string;
+  owner_id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UScoutShortlistPlayer = {
+  id: string;
+  shortlist_id: string;
+  player_id: string | null;
+  source_kind: "database" | "manual";
+  player_name: string;
+  normalized_player_name: string;
+  birth_year: number | null;
+  team_name: string | null;
+  position: string | null;
+  competition: string | null;
+  verdict: string | null;
+  reports_count: number;
+  priority: "baja" | "media" | "alta";
+  status: "pendiente" | "proximo" | "visto" | "descartado";
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UScoutBoard = {
+  id: string;
+  season_id: string;
+  owner_id: string;
+  name: string;
+  formation: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UScoutBoardSlot = {
+  id: string;
+  board_id: string;
+  slot_key: string;
+  shortlist_player_id: string | null;
+  player_id: string | null;
+  player_name: string;
+  normalized_player_name: string;
+  birth_year: number | null;
+  team_name: string | null;
+  position: string | null;
+  source_kind: "database" | "manual";
+  created_at: string;
+  updated_at: string;
 };
 
 export type ObjectivePlayer = {

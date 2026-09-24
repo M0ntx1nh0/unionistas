@@ -7,6 +7,7 @@ const corsHeaders = {
 };
 
 const validTargets = new Set(["all", "reports", "campograms", "calendar", "wyscout"]);
+const validSeasonLabels = new Set(["2025/26", "2026/27"]);
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -81,7 +82,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "Solo los administradores pueden lanzar sincronizaciones" }, 403);
   }
 
-  let body: { target?: string; dry_run?: boolean };
+  let body: { target?: string; dry_run?: boolean; season_label?: string };
   try {
     body = await req.json();
   } catch {
@@ -90,9 +91,23 @@ Deno.serve(async (req) => {
 
   const target = body.target || "reports";
   const dryRun = Boolean(body.dry_run);
+  const seasonLabel = body.season_label || "2026/27";
 
   if (!validTargets.has(target)) {
     return jsonResponse({ error: `Target no valido: ${target}` }, 400);
+  }
+  if (!validSeasonLabels.has(seasonLabel)) {
+    return jsonResponse({ error: `Temporada no valida: ${seasonLabel}` }, 400);
+  }
+  if (
+    seasonLabel === "2026/27" &&
+    target !== "reports" &&
+    target !== "calendar"
+  ) {
+    return jsonResponse(
+      { error: "En 2026/27 solo estan disponibles informes y calendario" },
+      400,
+    );
   }
 
   const response = await fetch(
@@ -110,6 +125,7 @@ Deno.serve(async (req) => {
         inputs: {
           target,
           dry_run: String(dryRun),
+          season_label: seasonLabel,
         },
       }),
     },
@@ -130,6 +146,7 @@ Deno.serve(async (req) => {
     ok: true,
     target,
     dry_run: dryRun,
+    season_label: seasonLabel,
     message: "Sincronizacion lanzada",
   });
 });

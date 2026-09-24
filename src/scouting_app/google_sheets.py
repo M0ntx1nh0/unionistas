@@ -24,15 +24,25 @@ def _get_service_account_info() -> dict[str, Any]:
     return dict(st.secrets["gcp_service_account"])
 
 
-def _get_sheet_config() -> dict[str, str]:
-    if "google_sheet" not in st.secrets:
-        raise KeyError("Falta la clave 'google_sheet' en .streamlit/secrets.toml.")
+def _sheet_config_key(season_label: str | None = None) -> str:
+    if not season_label or season_label == "2025/26":
+        return "google_sheet"
+    normalized_season = re.sub(r"[^0-9]+", "_", season_label).strip("_")
+    return f"google_sheet_{normalized_season}"
 
-    config = dict(st.secrets["google_sheet"])
+
+def _get_sheet_config(season_label: str | None = None) -> dict[str, str]:
+    config_key = _sheet_config_key(season_label)
+    if config_key not in st.secrets:
+        raise KeyError(
+            f"Falta la clave '{config_key}' en .streamlit/secrets.toml."
+        )
+
+    config = dict(st.secrets[config_key])
     required_keys = ["spreadsheet_id", "worksheet_name"]
     missing = [key for key in required_keys if not config.get(key)]
     if missing:
-        raise KeyError(f"Faltan claves en google_sheet: {', '.join(missing)}")
+        raise KeyError(f"Faltan claves en {config_key}: {', '.join(missing)}")
     return config
 
 
@@ -125,6 +135,6 @@ def write_google_worksheet(spreadsheet_id: str, worksheet_name: str, df: pd.Data
     worksheet.update("A1", rows)
 
 
-def read_google_sheet() -> pd.DataFrame:
-    config = _get_sheet_config()
+def read_google_sheet(season_label: str | None = None) -> pd.DataFrame:
+    config = _get_sheet_config(season_label)
     return read_google_worksheet(config["spreadsheet_id"], config["worksheet_name"])

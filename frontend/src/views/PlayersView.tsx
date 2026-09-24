@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import type { ObjectivePlayer, ObjectivePlayerMatch, PlayerSummary, ScoutingReport } from "../types";
+import { Fragment, useEffect, useState } from "react";
+import type {
+  ObjectivePlayer,
+  ObjectivePlayerMatch,
+  PlayerSummary,
+  ScoutingReport,
+  Season,
+} from "../types";
 import { formatDate } from "../utils/format";
 
 function normalizeKey(value: string) {
@@ -894,21 +900,38 @@ export function PlayersView({
   objectiveMatches,
   players,
   reports,
+  allReports,
+  seasons,
 }: {
   focusPlayerName?: string;
   objectivePlayers: ObjectivePlayer[];
   objectiveMatches: ObjectivePlayerMatch[];
   players: PlayerSummary[];
   reports: ScoutingReport[];
+  allReports: ScoutingReport[];
+  seasons: Season[];
 }) {
   const [search, setSearch] = useState("");
   const [competitionFilter, setCompetitionFilter] = useState("Todas");
+  const [teamFilter, setTeamFilter] = useState("Todos");
   const [verdictFilter, setVerdictFilter] = useState("Todos");
   const [selectedPlayerName, setSelectedPlayerName] = useState("");
   const [objectiveRadarMode, setObjectiveRadarMode] = useState<ObjectiveRadarMode>("specific");
+  const [reportSeasonFilter, setReportSeasonFilter] = useState("all");
 
   const competitions = Array.from(
     new Set(players.map((player) => player.competition || "Sin competición")),
+  ).sort((a, b) => a.localeCompare(b, "es"));
+  const teams = Array.from(
+    new Set(
+      players
+        .filter(
+          (player) =>
+            competitionFilter === "Todas" ||
+            (player.competition || "Sin competición") === competitionFilter,
+        )
+        .map((player) => player.team_name || "Sin equipo"),
+    ),
   ).sort((a, b) => a.localeCompare(b, "es"));
   const verdicts = Array.from(new Set(players.map((player) => player.verdict || "Sin veredicto")))
     .sort((a, b) => a.localeCompare(b, "es"));
@@ -925,14 +948,22 @@ export function PlayersView({
       .join(" ")
       .toLocaleLowerCase("es");
     const competition = player.competition || "Sin competición";
+    const team = player.team_name || "Sin equipo";
     const verdict = player.verdict || "Sin veredicto";
 
     return (
       (!normalizedSearch || haystack.includes(normalizedSearch)) &&
       (competitionFilter === "Todas" || competition === competitionFilter) &&
+      (teamFilter === "Todos" || team === teamFilter) &&
       (verdictFilter === "Todos" || verdict === verdictFilter)
     );
   });
+
+  useEffect(() => {
+    if (teamFilter !== "Todos" && !teams.includes(teamFilter)) {
+      setTeamFilter("Todos");
+    }
+  }, [teamFilter, teams]);
 
   useEffect(() => {
     if (!focusPlayerName) return;
@@ -942,6 +973,7 @@ export function PlayersView({
     if (!target) return;
     setSearch("");
     setCompetitionFilter("Todas");
+    setTeamFilter("Todos");
     setVerdictFilter("Todos");
     setSelectedPlayerName(target.player_name);
   }, [focusPlayerName, players]);
@@ -957,6 +989,7 @@ export function PlayersView({
   }, [filteredPlayers, selectedPlayerName]);
 
   const reportsByPlayer = new Map<string, ScoutingReport[]>();
+  const allReportsByPlayer = new Map<string, ScoutingReport[]>();
 
   for (const report of reports) {
     const key = normalizeKey(report.player_name);
@@ -964,12 +997,64 @@ export function PlayersView({
     playerReports.push(report);
     reportsByPlayer.set(key, playerReports);
   }
+  for (const report of allReports) {
+    const key = normalizeKey(report.player_name);
+    const playerReports = allReportsByPlayer.get(key) || [];
+    playerReports.push(report);
+    allReportsByPlayer.set(key, playerReports);
+  }
 
   const selectedPlayer =
     filteredPlayers.find((player) => player.player_name === selectedPlayerName) || filteredPlayers[0];
   const selectedReports = selectedPlayer
     ? reportsByPlayer.get(normalizeKey(selectedPlayer.player_name)) || []
     : [];
+  const selectedHistoricalReports = selectedPlayer
+    ? allReportsByPlayer.get(normalizeKey(selectedPlayer.player_name)) || []
+    : [];
+  const detailReports = selectedHistoricalReports.filter(
+    (report) => reportSeasonFilter === "all" || report.season_id === reportSeasonFilter,
+  );
+  const seasonLabelById = new Map(seasons.map((season) => [season.id, season.label]));
+  const reportCountBySeason = new Map<string, number>();
+  for (const report of selectedHistoricalReports) {
+    if (!report.season_id) continue;
+    reportCountBySeason.set(
+      report.season_id,
+      (reportCountBySeason.get(report.season_id) || 0) + 1,
+    );
+  }
+  const verdictCountBySeason = [...seasons]
+    .sort((a, b) =>
+      (a.starts_on || a.label).localeCompare(b.starts_on || b.label, "es"),
+    )
+    .map((season) => {
+      const counts = new Map<string, number>();
+      const seasonTeams = new Set<string>();
+      for (const report of selectedHistoricalReports) {
+        if (report.season_id !== season.id) continue;
+        const verdict = report.verdict?.trim() || "Sin valoración";
+        counts.set(verdict, (counts.get(verdict) || 0) + 1);
+        seasonTeams.add(report.team_name?.trim() || "Sin equipo");
+      }
+      const orderedVerdicts = [
+        ...VERDICT_ORDER.filter((verdict) => counts.has(verdict)),
+        ...Array.from(counts.keys())
+          .filter((verdict) => !VERDICT_ORDER.includes(verdict))
+          .sort((a, b) => a.localeCompare(b, "es")),
+      ];
+      return {
+        counts,
+        orderedVerdicts,
+        season,
+        teams: Array.from(seasonTeams).sort((a, b) => a.localeCompare(b, "es")),
+        total: Array.from(counts.values()).reduce((sum, count) => sum + count, 0),
+      };
+    });
+  const maximumSeasonVerdictCount = Math.max(
+    1,
+    ...verdictCountBySeason.flatMap(({ counts }) => Array.from(counts.values())),
+  );
   const selectedObjectiveMatches = selectedPlayer
     ? objectiveMatches
         .filter(
@@ -1107,13 +1192,13 @@ export function PlayersView({
     ? rawText(latestReport, "demarcacion") || selectedPlayer?.position || ""
     : selectedPlayer?.position || "";
   const technicalPatterns = summarizeRepeated(
-    selectedReports.map((report) => report.rating_technical),
+    detailReports.map((report) => report.rating_technical),
   );
   const tacticalPatterns = summarizeRepeated(
-    selectedReports.map((report) => report.rating_psychological),
+    detailReports.map((report) => report.rating_psychological),
   );
   const physicalPatterns = summarizeRepeated(
-    selectedReports.map((report) => report.rating_physical),
+    detailReports.map((report) => report.rating_physical),
   );
 
   return (
@@ -1147,6 +1232,15 @@ export function PlayersView({
             </select>
           </label>
           <label>
+            Equipo
+            <select onChange={(event) => setTeamFilter(event.target.value)} value={teamFilter}>
+              <option>Todos</option>
+              {teams.map((team) => (
+                <option key={team}>{team}</option>
+              ))}
+            </select>
+          </label>
+          <label>
             Valoración
             <select onChange={(event) => setVerdictFilter(event.target.value)} value={verdictFilter}>
               <option>Todos</option>
@@ -1174,10 +1268,69 @@ export function PlayersView({
         {selectedPlayer ? (
           <>
             <article className="player-profile-card">
-              <div>
+              <div className="player-profile-card__identity">
                 <span className="profile-kicker">Jugador seleccionado</span>
                 <h3>{selectedPlayer.player_name}</h3>
                 <p>{selectedPlayer.team_name || "Sin equipo"}</p>
+                <div className="player-verdict-summary">
+                  <div className="player-verdict-summary__head">
+                    <span>Valoraciones por temporada</span>
+                    <small>{selectedHistoricalReports.length} informes históricos</small>
+                  </div>
+                  <span className="player-verdict-summary__scroll-hint">
+                    Desliza para consultar más temporadas
+                  </span>
+                  <div className="player-verdict-summary__chart">
+                    <div className="player-verdict-summary__scale" aria-hidden="true">
+                      <span>{maximumSeasonVerdictCount}</span>
+                      <span>0</span>
+                    </div>
+                    <div className="player-verdict-summary__plot">
+                      {verdictCountBySeason.map(({ counts, orderedVerdicts, season, teams, total }) => (
+                        <div
+                          className="player-verdict-summary__group"
+                          key={season.id}
+                          style={{ minWidth: `${Math.max(150, orderedVerdicts.length * 54 + 28)}px` }}
+                        >
+                          <div className="player-verdict-summary__bars">
+                            {total ? (
+                              orderedVerdicts.map((verdict) => {
+                                const count = counts.get(verdict) || 0;
+                                return (
+                                  <div
+                                    className="player-verdict-summary__bar-item"
+                                    key={`${season.id}-${verdict}`}
+                                    title={`${season.label}: ${verdict}, ${count} ${count === 1 ? "informe" : "informes"}`}
+                                  >
+                                    <strong>{count}</strong>
+                                    <div className="player-verdict-summary__bar-track">
+                                      <span
+                                        className={verdictClass(verdict)}
+                                        style={{ height: `${Math.max(8, (count / maximumSeasonVerdictCount) * 100)}%` }}
+                                      />
+                                    </div>
+                                    <small>{verdict}</small>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <span className="player-verdict-summary__empty">Sin valoraciones</span>
+                            )}
+                          </div>
+                          <div className="player-verdict-summary__season-label">
+                            <div>
+                              <strong>{season.label}</strong>
+                              <span>{total} {total === 1 ? "informe" : "informes"}</span>
+                            </div>
+                            <small title={teams.join(" · ")}>
+                              {teams.length ? teams.join(" · ") : "Sin equipo registrado"}
+                            </small>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="profile-facts-grid">
                 <div>
@@ -1449,17 +1602,76 @@ export function PlayersView({
               </section>
             )}
 
+            <section className="player-season-filter" aria-label="Temporada de los informes">
+              <div className="player-season-filter__copy">
+                <span className="profile-kicker">Análisis subjetivo</span>
+                <h2>Temporada de los informes</h2>
+                <p>Filtra valoraciones, posiciones, capacidades e historial del jugador.</p>
+              </div>
+              <label>
+                Mostrar
+                <select
+                  onChange={(event) => setReportSeasonFilter(event.target.value)}
+                  value={reportSeasonFilter}
+                >
+                  <option value="all">Todas las temporadas</option>
+                  {seasons.map((season) => (
+                    <option key={season.id} value={season.id}>
+                      {season.label} · {season.active ? "actual" : "histórica"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="player-season-filter__result">
+                <strong>{detailReports.length}</strong>
+                <span>{detailReports.length === 1 ? "informe visible" : "informes visibles"}</span>
+              </div>
+              <div className="player-season-filter__breakdown" aria-label="Informes por temporada">
+                <button
+                  aria-pressed={reportSeasonFilter === "all"}
+                  className={reportSeasonFilter === "all" ? "is-active" : ""}
+                  onClick={() => setReportSeasonFilter("all")}
+                  type="button"
+                >
+                  <span>Total histórico</span>
+                  <strong>{selectedHistoricalReports.length}</strong>
+                  <small>informes</small>
+                </button>
+                {seasons.map((season) => {
+                  const reportCount = reportCountBySeason.get(season.id) || 0;
+                  return (
+                    <button
+                      aria-pressed={reportSeasonFilter === season.id}
+                      className={reportSeasonFilter === season.id ? "is-active" : ""}
+                      key={season.id}
+                      onClick={() => setReportSeasonFilter(season.id)}
+                      type="button"
+                    >
+                      <span>
+                        {season.label}
+                        {season.active ? <em>Actual</em> : null}
+                      </span>
+                      <strong>{reportCount}</strong>
+                      <small>{reportCount === 1 ? "informe" : "informes"}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
             <div className="timeline-grid">
               <ActivityPanel
                 emptyLabel="Sin valoraciones suficientes"
-                reports={selectedReports}
+                reports={detailReports}
+                seasonLabels={seasonLabelById}
                 title="Valoraciones por scout y fecha"
                 valueOrder={VERDICT_ORDER}
                 valueGetter={(report) => report.verdict || "Sin valoración"}
               />
               <ActivityPanel
                 emptyLabel="Sin posiciones suficientes"
-                reports={selectedReports}
+                reports={detailReports}
+                seasonLabels={seasonLabelById}
                 title="Posición principal por scout y fecha"
                 valueGetter={(report) => rawText(report, "demarcacion_principal") || "Sin posición"}
               />
@@ -1473,12 +1685,28 @@ export function PlayersView({
 
             <div className="section-title section-title--sub">
               <h2>Historial de informes</h2>
-              <span>{selectedReports.length} informes</span>
+              <span>{detailReports.length} informes</span>
             </div>
 
             <div className="player-reports__list player-reports__list--open">
-              {selectedReports.map((report) => (
-                <article className={`player-report-card ${reportToneClass(report.verdict)}`} key={report.id}>
+              {!detailReports.length ? (
+                <div className="empty-state">
+                  Este jugador no tiene informes en la temporada seleccionada.
+                </div>
+              ) : null}
+              {detailReports.map((report, index) => {
+                const previousReport = detailReports[index - 1];
+                const startsSeason = index === 0 || previousReport?.season_id !== report.season_id;
+                const seasonLabel =
+                  seasonLabelById.get(report.season_id || "") || "Temporada sin identificar";
+                return (
+                <Fragment key={report.id}>
+                  {startsSeason ? (
+                    <div className="player-report-season-divider">
+                      <span>{seasonLabel}</span>
+                    </div>
+                  ) : null}
+                <article className={`player-report-card ${reportToneClass(report.verdict)}`}>
                   <div className="player-report-card__head">
                     <div>
                       <strong>{report.scout_name || "Sin scout"}</strong>
@@ -1494,6 +1722,7 @@ export function PlayersView({
                     </div>
                   </div>
                   <div className="tag-row">
+                    <span>{seasonLabelById.get(report.season_id || "") || "Temporada sin identificar"}</span>
                     <span>{report.position || "Sin posición"}</span>
                     <span>{report.competition || "Sin competición"}</span>
                     <span>{rawText(report, "jornada_numero") ? `J${formatRawNumber(rawText(report, "jornada_numero"))}` : "Sin jornada"}</span>
@@ -1521,7 +1750,9 @@ export function PlayersView({
                     <p>{report.rating_psychological || "Sin comentario."}</p>
                   </section>
                 </article>
-              ))}
+                </Fragment>
+                );
+              })}
             </div>
 
             <div className="section-title section-title--sub">
@@ -1533,6 +1764,7 @@ export function PlayersView({
                 <thead>
                   <tr>
                     <th>Fecha</th>
+                    <th>Temporada</th>
                     <th>Ojeador</th>
                     <th>Equipo</th>
                     <th>Competición</th>
@@ -1543,9 +1775,15 @@ export function PlayersView({
                   </tr>
                 </thead>
                 <tbody>
-                  {selectedReports.map((report) => (
+                  {!detailReports.length ? (
+                    <tr>
+                      <td colSpan={9}>Sin informes para esta temporada.</td>
+                    </tr>
+                  ) : null}
+                  {detailReports.map((report) => (
                     <tr key={`summary-${report.id}`}>
                       <td>{formatDate(report.report_date)}</td>
+                      <td>{seasonLabelById.get(report.season_id || "") || "-"}</td>
                       <td>{report.scout_name || "-"}</td>
                       <td>{report.team_name || "-"}</td>
                       <td>{report.competition || "-"}</td>
@@ -1570,12 +1808,14 @@ export function PlayersView({
 function ActivityPanel({
   emptyLabel,
   reports,
+  seasonLabels,
   title,
   valueOrder,
   valueGetter,
 }: {
   emptyLabel: string;
   reports: ScoutingReport[];
+  seasonLabels: Map<string, string>;
   title: string;
   valueOrder?: string[];
   valueGetter: (report: ScoutingReport) => string;
@@ -1586,12 +1826,26 @@ function ActivityPanel({
       date: report.report_date,
       dateLabel: formatDate(report.report_date),
       scout: report.scout_name || "Sin scout",
+      seasonId: report.season_id || "unknown",
+      seasonLabel: seasonLabels.get(report.season_id || "") || "Sin temporada",
       value: valueGetter(report),
     }))
     .filter((item) => item.date && item.scout && item.value)
     .sort((a, b) => new Date(a.date || "").getTime() - new Date(b.date || "").getTime());
 
-  const dateLabels = Array.from(new Set(rows.map((row) => row.dateLabel)));
+  const dateColumns = Array.from(
+    new Map(
+      rows.map((row) => [
+        `${row.seasonId}-${row.dateLabel}`,
+        {
+          dateLabel: row.dateLabel,
+          key: `${row.seasonId}-${row.dateLabel}`,
+          seasonId: row.seasonId,
+          seasonLabel: row.seasonLabel,
+        },
+      ]),
+    ).values(),
+  );
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
     const values = grouped.get(row.value) || [];
@@ -1615,19 +1869,40 @@ function ActivityPanel({
             <thead>
               <tr>
                 <th />
-                {dateLabels.map((date) => (
-                  <th key={date}>{date}</th>
-                ))}
+                {dateColumns.map((column, index) => {
+                  const previousSeasonId = dateColumns[index - 1]?.seasonId;
+                  const startsSeason = index === 0 || previousSeasonId !== column.seasonId;
+                  const separatesSeason = index > 0 && startsSeason;
+                  return (
+                    <th
+                      className={separatesSeason ? "activity-season-start" : ""}
+                      key={column.key}
+                    >
+                      {startsSeason ? (
+                        <span className="activity-season-label">{column.seasonLabel}</span>
+                      ) : null}
+                      <span>{column.dateLabel}</span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {orderedValues.map((value) => (
                 <tr key={value}>
                   <th>{value}</th>
-                  {dateLabels.map((date) => {
-                    const cellItems = (grouped.get(value) || []).filter((item) => item.dateLabel === date);
+                  {dateColumns.map((column, index) => {
+                    const previousSeasonId = dateColumns[index - 1]?.seasonId;
+                    const separatesSeason = index > 0 && previousSeasonId !== column.seasonId;
+                    const cellItems = (grouped.get(value) || []).filter(
+                      (item) =>
+                        item.dateLabel === column.dateLabel && item.seasonId === column.seasonId,
+                    );
                     return (
-                      <td key={`${value}-${date}`}>
+                      <td
+                        className={separatesSeason ? "activity-season-start" : ""}
+                        key={`${value}-${column.key}`}
+                      >
                         {cellItems.map((item) => (
                           <span
                             className={`timeline-pill ${verdictClass(value)}`}

@@ -25,7 +25,7 @@ scouting/
 │   │   ├── lib/supabase.ts        # Cliente Supabase
 │   │   ├── types.ts               # Tipos de dominio compartidos
 │   │   ├── components/            # Componentes UI reutilizables
-│   │   ├── utils/                 # Utilidades pequeñas (formato)
+│   │   ├── utils/                 # Utilidades pequeñas (formato, useSessionState)
 │   │   └── views/                 # Pantallas principales de negocio
 │   ├── public/                    # Assets públicos
 │   ├── package.json
@@ -34,7 +34,7 @@ scouting/
 ├── scripts/                       # Sincronización/importación hacia Supabase
 ├── supabase/                      # Schema, migrations, policies, seed y edge functions
 ├── creado para Unionistas - roles/ # Notebooks externos de modelado por roles y ranking posicional
-├── docs/react_migration_plan.md   # Decisiones de migración y arquitectura objetivo
+├── docs/                          # Plan de migración, temporada 26/27 e identidad de jugadores
 └── union_context.md               # Este documento
 ```
 
@@ -124,6 +124,8 @@ Este archivo es la referencia principal para entender qué espera la UI de Supab
 - `format.ts`
   - `formatDate`
   - `formatTime`
+- `useSessionState.ts`
+  - `useState` persistido en `sessionStorage` (lo usan `Campogramas` y `Calendario`).
 
 Utilidades pequeñas y puras. No hay una capa amplia de helpers compartidos; mucha lógica de transformación vive dentro de cada vista.
 
@@ -133,10 +135,12 @@ Utilidades pequeñas y puras. No hay una capa amplia de helpers compartidos; muc
   - Define las secciones principales:
     - `Dashboard`
     - `Jugadores`
+    - `UScout`
     - `Informes`
     - `Calendario`
     - `Campogramas`
     - `ULab`
+    - `Rankings`
 
 - `DashboardView.tsx`
   - Resumen ejecutivo basado en informes subjetivos.
@@ -157,9 +161,6 @@ Utilidades pequeñas y puras. No hay una capa amplia de helpers compartidos; muc
   - Cruza calendario con jugadores procedentes de informes y campogramas.
   - Normaliza nombres de equipos y crea niveles de interés por partido.
   - Es una vista de inteligencia operativa, no solo agenda.
-
-- `CalendarPanel.tsx`
-  - Componente más simple para listado de partidos.
 
 - `CampogramsView.tsx`
   - Otra vista muy cargada de lógica de negocio.
@@ -635,3 +636,43 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
   - `Tocados + Ofrecidos`
   - cualquier combinación equivalente
 - El filtro debe mantener siempre al menos un estado activo.
+
+## 18. Temporada 2026/27
+
+- `2026/27` es la temporada activa (`active = true`) y la que se abre por defecto; `2025/26` queda como histórico en el selector.
+- Informes 2026/27: hoja **Base de Datos 26/27 USCF**, configurada en `secrets.toml` como `google_sheet_2026_27` (`google_sheets._sheet_config_key`).
+- En 2026/27 solo están habilitadas las sincronizaciones de `reports` y `calendar`. Campogramas y Wyscout siguen bloqueados en tres sitios que deben ir a la par: `AdminSyncPanel` (`App.tsx`), la edge function `trigger-sync` y el workflow `sync-supabase.yml`.
+- Los scripts `sync_scouting_reports_to_supabase.py` y `sync_calendar_to_supabase.py` usan `2026/27` por defecto (`--season` para cambiarlo). Los internos de `calendar_data.py` / `google_sheets.py` mantienen `2025/26` por compatibilidad con Streamlit.
+- Las etiquetas de temporada están escritas a mano en varios sitios; para `2027/28` hay que revisarlos todos (pendiente centralizar).
+- Detalle funcional y decisiones: `docs/temporada_26_27_pendientes.md`.
+
+## 19. Calendario multiliga (Sofascore)
+
+- Fuente: API de Sofascore → pestaña `calendar_matches` de la hoja **Calendario** → Supabase `calendar_matches`.
+- Sofascore bloquea (`403`) clientes cuya huella TLS no es de navegador: la descarga usa `curl_cffi` con `impersonate="chrome"` (en `requirements.txt`) y cae a `requests` solo si no está instalado.
+- Las horas se convierten siempre a `Europe/Madrid` (el runner de GitHub Actions está en UTC).
+- Competiciones por temporada en `SOFASCORE_COMPETITIONS_BY_SEASON` (`calendar_data.py`). En 2026/27:
+  - `1RFEF` (17073 / 97382) y `2RFEF` (544 / 97389).
+  - `Serie C`: tres torneos Sofascore (Girone A 11445/99662, B 11447/99668, C 11446/99663) unificados como competición `Serie C` con grupo fijo `Girone X`.
+  - `Ligue 3` (183 / 97457), el antiguo Championnat National, grupo `Grupo único`. No confundir con `National 1` (28153), que es la 4ª categoría y no está cargada.
+- Carga manual: `.venv/bin/python scripts/sync_calendar_to_supabase.py --season 2026/27 --refresh-source --apply` (`--full-refresh` para rehacer todas las jornadas). Sin `--full-refresh` solo refresca jornadas cercanas y pendientes. `--refresh-source` escribe en la hoja aunque no haya `--apply`.
+- `CalendarView`:
+  - Selector de `Liga` (solo las que tienen partidos en la temporada) y filtro multiselección de `Grupos` antes de `Planificación de partidos`; se muestra una liga cada vez. Estado persistido en `sessionStorage` (`calendar.competition`, `calendar.groups`).
+  - `competitionKey` reconoce `1RFEF`, `2RFEF`, `Serie C` e `Italia (Serie C)`, `Ligue 3` / `Francia (Ligue 3)` / `National` (nombre antiguo).
+  - En `Serie C` y `Ligue 3` el emparejamiento ignora siglas de club y años (`AC Trento` = `Trento`, `SSC Bari` = `Bari`); en 1RFEF/2RFEF se mantiene el mapa `TEAM_ALIASES`.
+  - Alias revisados para ascensos/descensos 2026/27 (Mérida, Mirandés, Real Unión, Alcorcón, Águilas, Villarreal B U23, Guadalajara, Conquense, Atlético Baleares, Salamanca CF UDS…). En 2RFEF `Ourense` es el **Ourense CF**; la **UD Ourense** está en 1RFEF.
+
+## 20. UScout
+
+- Pestaña entre `Jugadores` e `Informes` (`UScoutView.tsx`, migración `009_uscout_workspace.sql`).
+- Shortlist por scout y temporada (máx. 6 jugadores por posición) y hasta 6 campogramas por scout y temporada (`4-3-3`, `4-2-3-1`, `4-4-2`), con guardado automático.
+- Privacidad por RLS: el scout solo ve y edita su espacio; el coordinador consulta; el admin edita.
+- Pendiente: calendario de la shortlist, enlace de jugadores manuales, arrastre, banquillo y exportación (`docs/temporada_26_27_pendientes.md`).
+
+## 21. Identidad estable de jugadores
+
+- Migraciones `010_player_identity_foundation.sql` y `012_player_identity_operational_metadata.sql`: `players`, `player_seasons`, `player_identity_links`, `player_external_ids`.
+- Clave de identidad: nombre normalizado + año de nacimiento (`scripts/player_identity.py`). Los syncs de informes y campogramas asignan `player_id` con `attach_player_ids`.
+- Auditoría de solo lectura: `scripts/audit_player_identity_migration.py` (salida en `outputs/`, fuera de Git por contener datos personales).
+- Estado: informes, campogramas y UScout enlazados; Wyscout pendiente (623 matches `seguro` enlazables) y 85 registros sin datos suficientes para revisión manual.
+- El frontend todavía agrupa por nombre (p. ej. histórico de informes en `PlayersView`); pasar a `player_id` es la fase 5 de `docs/migracion_identidad_jugadores.md`.

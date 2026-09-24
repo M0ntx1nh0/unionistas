@@ -20,3 +20,9 @@ auth/
 data/raw/*.csv
 data/processed/*.csv
 supabase/.temp/
+
+# Local, no se versiona
+outputs/
+.claude/
+creado para Unionistas - roles/
+Lanzar_Unionistas_Local.command

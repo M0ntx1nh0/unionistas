@@ -22,6 +22,7 @@ import { PlayersView } from "./views/PlayersView";
 import { ReportsView } from "./views/ReportsView";
 import { RankingsView } from "./views/RankingsView";
 import { ULabView } from "./views/ULabView";
+import { UScoutView } from "./views/UScoutView";
 import { VIEWS, type ViewName } from "./views/viewConfig";
 
 type SyncTarget = "reports" | "campograms" | "calendar" | "wyscout" | "all";
@@ -121,7 +122,9 @@ function buildPlayerSummaries(reports: ScoutingReport[]) {
 
     if (!current) {
       playersByName.set(key, {
+        player_id: report.player_id,
         player_name: report.player_name,
+        birth_year: report.birth_year,
         team_name: report.team_name,
         competition: report.competition,
         position: report.position,
@@ -141,6 +144,8 @@ function buildPlayerSummaries(reports: ScoutingReport[]) {
       current.scouts_count = current.scoutNames.size;
     }
     if (reportTimestamp >= current.latestTimestamp) {
+      current.player_id = report.player_id || current.player_id;
+      current.birth_year = report.birth_year || current.birth_year;
       current.team_name = report.team_name;
       current.competition = report.competition;
       current.position = report.position;
@@ -155,10 +160,19 @@ function buildPlayerSummaries(reports: ScoutingReport[]) {
     .sort((a, b) => a.player_name.localeCompare(b.player_name, "es"));
 }
 
-function AdminSyncPanel({ profile }: { profile: UserProfile }) {
+function AdminSyncPanel({ profile, season }: { profile: UserProfile; season: Season }) {
   const [target, setTarget] = useState<SyncTarget>("reports");
   const [isLaunching, setIsLaunching] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
+  const availableTargets =
+    season.label === "2026/27"
+      ? SYNC_TARGETS.filter(
+          (option) => option.value === "reports" || option.value === "calendar",
+        )
+      : SYNC_TARGETS;
+  const effectiveTarget = availableTargets.some((option) => option.value === target)
+    ? target
+    : "reports";
 
   if (profile.role !== "admin") {
     return null;
@@ -170,8 +184,9 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
 
     const { data, error } = await supabase.functions.invoke("trigger-sync", {
       body: {
-        target,
+        target: effectiveTarget,
         dry_run: false,
+        season_label: season.label,
       },
     });
 
@@ -184,15 +199,16 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
       return;
     }
 
-    const label = SYNC_TARGETS.find((option) => option.value === target)?.label || target;
+    const label =
+      SYNC_TARGETS.find((option) => option.value === effectiveTarget)?.label || effectiveTarget;
     setMessage({
       type: "ok",
-      text: `Sincronizacion lanzada para ${label}. GitHub Actions la ejecutara en segundo plano.`,
+      text: `Sincronizacion ${season.label} lanzada para ${label}. GitHub Actions la ejecutara en segundo plano.`,
     });
     setIsLaunching(false);
   }
 
-  const selectedTarget = SYNC_TARGETS.find((option) => option.value === target);
+  const selectedTarget = availableTargets.find((option) => option.value === effectiveTarget);
 
   return (
     <section className="admin-sync-panel" aria-label="Sincronizacion de datos">
@@ -209,9 +225,9 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
           Fuente
           <select
             onChange={(event) => setTarget(event.target.value as SyncTarget)}
-            value={target}
+            value={effectiveTarget}
           >
-            {SYNC_TARGETS.map((option) => (
+            {availableTargets.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -240,19 +256,20 @@ function AdminSyncPanel({ profile }: { profile: UserProfile }) {
   );
 }
 
-async function fetchAllScoutingReports(seasonId: string) {
+async function fetchAllScoutingReports(seasonId?: string) {
   const pageSize = 1000;
   const allReports: ScoutingReport[] = [];
 
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("scouting_reports")
       .select(
-        "id,player_name,scout_name,scout_email,team_name,competition,group_name,position,verdict,birth_year,birth_place,nationality,foot,secondary_position,contract_until,agency,contract_status,matchday,watched_match,viewing_type,positive_aspects,negative_aspects,times_seen_same_scout,report_date,rating_technical,rating_physical,rating_psychological,comments,raw_data",
+        "id,season_id,player_name,scout_name,scout_email,team_name,competition,group_name,position,verdict,birth_year,birth_place,nationality,foot,secondary_position,contract_until,agency,contract_status,matchday,watched_match,viewing_type,positive_aspects,negative_aspects,times_seen_same_scout,report_date,rating_technical,rating_physical,rating_psychological,comments,raw_data",
       )
-      .eq("season_id", seasonId)
       .order("report_date", { ascending: false })
       .range(from, from + pageSize - 1);
+    if (seasonId) query = query.eq("season_id", seasonId);
+    const { data, error } = await query;
 
     if (error) {
       return { data: [] as ScoutingReport[], error };
@@ -429,6 +446,7 @@ function AppShell({
   campogramReports,
   objectivePlayers,
   objectiveMatches,
+  allReports,
   onUpdateCampogramPlayer,
 }: {
   session: Session;
@@ -447,12 +465,14 @@ function AppShell({
   campogramReports: CampogramReport[];
   objectivePlayers: ObjectivePlayer[];
   objectiveMatches: ObjectivePlayerMatch[];
+  allReports: ScoutingReport[];
   onUpdateCampogramPlayer: (playerId: string, patch: Partial<CampogramPlayer>) => void;
 }) {
   const [focusedPlayerName, setFocusedPlayerName] = useState("");
   const [focusedCampogramPlayerName, setFocusedCampogramPlayerName] = useState("");
   const [focusedCampogramPlayerId, setFocusedCampogramPlayerId] = useState("");
   const scopedReports = scopeReportsForProfile(reports, profile);
+  const scopedAllReports = scopeReportsForProfile(allReports, profile);
   const scopedPlayers = profile.role === "scout" ? buildPlayerSummaries(scopedReports) : players;
   const scopedCampogramReports = scopeReportsForProfile(campogramReports, profile);
   const scopedPlayerNames = new Set(scopedReports.map((report) => normalizeKey(report.player_name)));
@@ -463,6 +483,8 @@ function AppShell({
             match.scouting_player_name && scopedPlayerNames.has(normalizeKey(match.scouting_player_name)),
         )
       : objectiveMatches;
+  const selectedSeason =
+    seasons.find((season) => season.id === selectedSeasonId) || seasons[0];
 
   async function handleSignOut() {
     clearSessionActivity();
@@ -510,7 +532,7 @@ function AppShell({
           >
             {seasons.map((season) => (
               <option key={season.id} value={season.id}>
-                {season.label}
+                {season.label} · {season.active ? "actual" : "histórico"}
               </option>
             ))}
           </select>
@@ -521,7 +543,7 @@ function AppShell({
         </p>
       </section>
 
-      <AdminSyncPanel profile={profile} />
+      <AdminSyncPanel profile={profile} season={selectedSeason} />
 
       {activeView === "Dashboard" ? (
         <DashboardView profile={profile} reports={scopedReports} />
@@ -533,6 +555,16 @@ function AppShell({
           objectiveMatches={scopedObjectiveMatches}
           players={scopedPlayers}
           reports={scopedReports}
+          allReports={scopedAllReports}
+          seasons={seasons}
+        />
+      ) : null}
+      {activeView === "UScout" && selectedSeason ? (
+        <UScoutView
+          players={players}
+          profile={profile}
+          reports={scopedReports}
+          season={selectedSeason}
         />
       ) : null}
       {activeView === "Informes" ? <ReportsView profile={profile} reports={scopedReports} /> : null}
@@ -595,6 +627,7 @@ export default function App() {
   const [matches, setMatches] = useState<CalendarMatch[]>([]);
   const [players, setPlayers] = useState<PlayerSummary[]>([]);
   const [reports, setReports] = useState<ScoutingReport[]>([]);
+  const [allReports, setAllReports] = useState<ScoutingReport[]>([]);
   const [campograms, setCampograms] = useState<Campogram[]>([]);
   const [campogramPlayers, setCampogramPlayers] = useState<CampogramPlayer[]>([]);
   const [campogramReports, setCampogramReports] = useState<CampogramReport[]>([]);
@@ -721,7 +754,12 @@ export default function App() {
       setProfile(profileData as UserProfile);
       setSeasons((seasonData || []) as Season[]);
       // Solo sobreescribir la temporada seleccionada en la primera carga
-      if (isFirstLoad) setSelectedSeasonId((seasonData || [])[0]?.id || "");
+      if (isFirstLoad) {
+        const availableSeasons = (seasonData || []) as Season[];
+        const defaultSeason =
+          availableSeasons.find((season) => season.active) || availableSeasons[0];
+        setSelectedSeasonId(defaultSeason?.id || "");
+      }
       if (isFirstLoad) setIsLoading(false);
     }
 
@@ -747,6 +785,7 @@ export default function App() {
         campogramReports,
         calendarRows,
         reportRows,
+        allReportRows,
         objectiveRows,
         objectiveMatchRows,
         campogramRows,
@@ -771,6 +810,7 @@ export default function App() {
           .eq("season_id", selectedSeasonId),
         fetchAllCalendarMatches(selectedSeasonId),
         fetchAllScoutingReports(selectedSeasonId),
+        fetchAllScoutingReports(),
         fetchAllObjectivePlayers(selectedSeasonId),
         fetchAllObjectiveMatches(selectedSeasonId),
         supabase
@@ -791,6 +831,7 @@ export default function App() {
         campogramReports.error ||
         calendarRows.error ||
         reportRows.error ||
+        allReportRows.error ||
         campogramRows.error ||
         campogramPlayerRows.error ||
         campogramReportRows.error;
@@ -815,6 +856,7 @@ export default function App() {
       });
       setMatches((calendarRows.data || []) as CalendarMatch[]);
       const fullReports = (reportRows.data || []) as ScoutingReport[];
+      setAllReports((allReportRows.data || []) as ScoutingReport[]);
       const objectivePlayersById = new Map(
         ((objectiveRows.error ? [] : objectiveRows.data || []) as ObjectivePlayer[]).map((player) => [
           player.id,
@@ -887,6 +929,7 @@ export default function App() {
       matches={matches}
       objectivePlayers={objectivePlayers}
       objectiveMatches={objectiveMatches}
+      allReports={allReports}
       onUpdateCampogramPlayer={handleUpdateCampogramPlayer}
       players={players}
       profile={profile}

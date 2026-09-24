@@ -36,6 +36,7 @@ from src.scouting_app.objective_data import (  # noqa: E402
     load_objective_players,
     match_objective_players,
 )
+from src.scouting_app.objective_profiles import apply_objective_profiles  # noqa: E402
 
 
 SEASON_LABEL = "2025/26"
@@ -286,6 +287,10 @@ def _objective_player_payload(
         "foot": _clean_text(row.get("foot")),
         "height": _clean_float(row.get("height")),
         "weight": _clean_float(row.get("weight")),
+        "primary_profile": _clean_text(row.get("primary_profile")),
+        "secondary_profile": _clean_text(row.get("secondary_profile")),
+        "profile_family": _clean_text(row.get("profile_family")),
+        "profile_score_map": _json_safe(row.get("profile_score_map")) or {},
         "metrics": _metric_payload(
             row,
             radar_data=radar_data,
@@ -474,6 +479,7 @@ def _replace_objective_dataset_snapshot(
 
 def sync_objective_players(apply: bool, source: str) -> None:
     objective_df = load_objective_players(source=source)  # type: ignore[arg-type]
+    objective_df = apply_objective_profiles(objective_df)
     subjective_df = load_scouting_reports()
     matches_df = match_objective_players(subjective_df, objective_df)
 

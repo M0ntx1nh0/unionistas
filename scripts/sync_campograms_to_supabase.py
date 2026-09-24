@@ -29,6 +29,7 @@ from src.scouting_app.campogram_data import (
     _get_campogram_sheet_config,
     _normalize_lookup_key,
 )
+from scripts.player_identity import attach_player_ids
 
 
 SEASON_LABEL = "2025/26"
@@ -231,6 +232,7 @@ def _report_payload(
     season_id: str,
     campogram_id: str | None,
     campogram_player_id: str | None,
+    player_id: str | None,
     source_config: dict[str, str],
     row_index: int,
 ) -> dict[str, Any]:
@@ -262,6 +264,7 @@ def _report_payload(
         "season_id": season_id,
         "campogram_id": campogram_id,
         "campogram_player_id": campogram_player_id,
+        "player_id": player_id,
         "source_system": REPORT_SOURCE_SYSTEM,
         "player_name": player_name,
         "normalized_player_name": normalized_player_name,
@@ -330,6 +333,22 @@ def sync_campograms(apply: bool) -> None:
     if duplicate_players:
         print(f"- Jugadores duplicados omitidos antes de escribir: {duplicate_players}")
 
+    linked_players, created_players, pending_players = attach_player_ids(client, player_payloads)
+    print(f"- Jugadores enlazados a player_id: {linked_players}")
+    print(f"- Nuevas identidades internas: {created_players}")
+    if pending_players:
+        print(f"- Jugadores pendientes de identidad: {pending_players}")
+
+    canonical_player_id_by_google_row: dict[str, str] = {}
+    payload_by_source_row = {
+        str(payload["source_row_id"]): payload
+        for payload in player_payloads
+    }
+    for google_row_id, source_row_id in player_source_row_by_google_row.items():
+        player_id = payload_by_source_row.get(source_row_id, {}).get("player_id")
+        if player_id:
+            canonical_player_id_by_google_row[google_row_id] = str(player_id)
+
     if player_payloads:
         inserted_players = (
             client.table("campogram_players")
@@ -354,6 +373,7 @@ def sync_campograms(apply: bool) -> None:
                 season_id=season_id,
                 campogram_id=campogram_ids.get(campogram_name),
                 campogram_player_id=player_id_by_source_row.get(player_source_row_id),
+                player_id=canonical_player_id_by_google_row.get(google_row_id),
                 source_config=source_config,
                 row_index=int(row_index),
             )
