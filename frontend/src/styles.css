@@ -1043,6 +1043,63 @@ p {
   font-weight: 900;
 }
 
+.calendar-country-chip {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.calendar-flag {
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(10, 10, 10, 0.15);
+  flex: none;
+  height: 0.95rem;
+  width: 1.45rem;
+}
+
+.calendar-league-chip {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.55rem;
+}
+
+.calendar-competition-heading {
+  align-items: center;
+  display: flex;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+/* Placa blanca: los logos oscuros deben leerse sobre la cabecera negra y el chip activo rojo. */
+.calendar-competition-logo {
+  align-items: center;
+  background: #ffffff;
+  border-radius: 10px;
+  display: inline-flex;
+  flex: none;
+  justify-content: center;
+}
+
+.calendar-competition-logo img {
+  display: block;
+  max-height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.calendar-competition-logo--chip {
+  height: 1.9rem;
+  padding: 0.15rem;
+  width: 1.9rem;
+}
+
+.calendar-competition-logo--header {
+  border-radius: 14px;
+  height: 3.4rem;
+  padding: 0.3rem;
+  width: 3.4rem;
+}
+
 .calendar-overview-charts.is-single {
   grid-template-columns: 1fr;
 }

@@ -296,6 +296,33 @@ SOFASCORE_COMPETITIONS_BY_SEASON = {
             season_id=99074,
             label="National 1",
         ),
+        "PRIMAVERA1": CompetitionConfig(
+            key="PRIMAVERA1",
+            unique_tournament_id=2292,
+            season_id=97201,
+            label="Primavera 1",
+            group_name="Grupo único",
+        ),
+        "LIGAPORTUGAL2": CompetitionConfig(
+            key="LIGAPORTUGAL2",
+            unique_tournament_id=239,
+            season_id=97470,
+            label="Liga Portugal 2",
+            group_name="Grupo único",
+        ),
+        "LIGA3PT": CompetitionConfig(
+            key="LIGA3PT",
+            unique_tournament_id=17101,
+            season_id=98660,
+            label="Liga 3",
+        ),
+        "NEXTGEN": CompetitionConfig(
+            key="NEXTGEN",
+            unique_tournament_id=11341,
+            season_id=98717,
+            label="Next Gen",
+            group_name="1ª fase",
+        ),
     },
 }
 

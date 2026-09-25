@@ -8,6 +8,15 @@ import type {
 } from "../types";
 import { formatDate, formatTime } from "../utils/format";
 import { useSessionState } from "../utils/useSessionState";
+import logo1RFEF from "../../../assets/Logos/1RFEF_Logo.png";
+import logo2RFEF from "../../../assets/Logos/2RFEF_Logo.png";
+import logoLiga2Portugal from "../../../assets/Logos/Liga2_Portugal.png";
+import logoLiga3Portugal from "../../../assets/Logos/Liga3_Portugal.png";
+import logoNextGen from "../../../assets/Logos/LigaNextGen_Portugal.png";
+import logoPrimavera1 from "../../../assets/Logos/LigaPrimavera1_Italia.png";
+import logoLigue3 from "../../../assets/Logos/Ligue3_Francia.png";
+import logoNational1 from "../../../assets/Logos/National1_Francia.png";
+import logoSerieC from "../../../assets/Logos/SerieC_Italia.png";
 
 type PlayerSource = "general" | "campograms";
 
@@ -37,14 +46,112 @@ type RoundOption = {
   firstDate: string;
 };
 
-const COMPETITIONS = ["1RFEF", "2RFEF", "Serie C", "Ligue 3", "National 1"] as const;
+const COMPETITIONS = [
+  "1RFEF",
+  "2RFEF",
+  "Serie C",
+  "Primavera 1",
+  "Ligue 3",
+  "National 1",
+  "Liga Portugal 2",
+  "Liga 3",
+  "Next Gen",
+] as const;
 type CompetitionName = (typeof COMPETITIONS)[number];
+
+type CountryCode = "ES" | "IT" | "FR" | "PT";
+
+const COUNTRIES: Array<{ code: CountryCode; name: string }> = [
+  { code: "ES", name: "España" },
+  { code: "IT", name: "Italia" },
+  { code: "FR", name: "Francia" },
+  { code: "PT", name: "Portugal" },
+];
+
+const COMPETITION_COUNTRY: Record<CompetitionName, CountryCode> = {
+  "1RFEF": "ES",
+  "2RFEF": "ES",
+  "Serie C": "IT",
+  "Primavera 1": "IT",
+  "Ligue 3": "FR",
+  "National 1": "FR",
+  "Liga Portugal 2": "PT",
+  "Liga 3": "PT",
+  "Next Gen": "PT",
+};
+
+// Si una liga no tiene logo se muestra solo su nombre.
+const COMPETITION_LOGOS: Partial<Record<CompetitionName, string>> = {
+  "1RFEF": logo1RFEF,
+  "2RFEF": logo2RFEF,
+  "Serie C": logoSerieC,
+  "Primavera 1": logoPrimavera1,
+  "Ligue 3": logoLigue3,
+  "National 1": logoNational1,
+  "Liga Portugal 2": logoLiga2Portugal,
+  "Liga 3": logoLiga3Portugal,
+  "Next Gen": logoNextGen,
+};
+
+function CompetitionLogo({ competition, size }: { competition: CompetitionName; size: "chip" | "header" }) {
+  const logo = COMPETITION_LOGOS[competition];
+  if (!logo) return null;
+  return (
+    <span className={`calendar-competition-logo calendar-competition-logo--${size}`}>
+      <img alt="" src={logo} />
+    </span>
+  );
+}
+
+// Banderas en SVG: los emojis de bandera no se ven en Windows.
+function CountryFlag({ code }: { code: CountryCode }) {
+  return (
+    <svg aria-hidden="true" className="calendar-flag" viewBox="0 0 30 20">
+      {code === "ES" && (
+        <>
+          <rect fill="#c60b1e" height="20" width="30" />
+          <rect fill="#ffc400" height="10" width="30" y="5" />
+        </>
+      )}
+      {code === "IT" && (
+        <>
+          <rect fill="#009246" height="20" width="10" />
+          <rect fill="#ffffff" height="20" width="10" x="10" />
+          <rect fill="#ce2b37" height="20" width="10" x="20" />
+        </>
+      )}
+      {code === "FR" && (
+        <>
+          <rect fill="#0055a4" height="20" width="10" />
+          <rect fill="#ffffff" height="20" width="10" x="10" />
+          <rect fill="#ef4135" height="20" width="10" x="20" />
+        </>
+      )}
+      {code === "PT" && (
+        <>
+          <rect fill="#006600" height="20" width="12" />
+          <rect fill="#ff0000" height="20" width="18" x="12" />
+          <circle cx="12" cy="10" fill="#ffcc00" r="4" />
+        </>
+      )}
+    </svg>
+  );
+}
 
 // En ligas extranjeras los informes usan el nombre oficial del club ("AC Trento",
 // "SSC Bari") y Sofascore el corto ("Trento", "Bari"): se ignoran siglas y años.
-const LOOSE_NAME_COMPETITIONS = new Set<string>(["Serie C", "Ligue 3", "National 1"]);
+const LOOSE_NAME_COMPETITIONS = new Set<string>([
+  "Serie C",
+  "Primavera 1",
+  "Ligue 3",
+  "National 1",
+  "Liga Portugal 2",
+  "Liga 3",
+  "Next Gen",
+]);
 const CLUB_NAME_NOISE = new Set([
-  "ac", "afc", "as", "asd", "calcio", "fc", "sc", "ss", "ssc", "ssd", "us", "usd",
+  "ac", "acf", "ad", "afc", "as", "asd", "calcio", "cd", "cf", "cfc", "fc", "futebol", "gd",
+  "sad", "sc", "sl", "ss", "ssc", "ssd", "uc", "ud", "us", "usd", "u19", "u20", "u21", "u23",
 ]);
 
 const INTEREST_BUCKETS = [
@@ -108,6 +215,16 @@ const TEAM_ALIASES: Record<string, Record<string, string>> = {
     "aguilas fc": "cda aguilas",
     "cda aguilas": "cda aguilas",
     "cda aguilas fc": "cda aguilas",
+  },
+  "Primavera 1": {
+    "inter de milan u20": "inter",
+  },
+  "Liga Portugal 2": {
+    "lusitania": "lusitania lourosa",
+    "lusitania fc": "lusitania lourosa",
+  },
+  "Liga 3": {
+    "vitoria guimaraes b": "vitoria b",
   },
   "National 1": {
     "estac troyes b": "troyes 2",
@@ -250,6 +367,23 @@ function competitionKey(value: string | null | undefined) {
   }
   if (/\bligue 3\b/.test(normalized) || normalized === "national" || normalized === "francia national") {
     return "Ligue 3";
+  }
+  // En los informes la Primavera 1 aparece como "Italia (U20)"; la Primavera 2 no se carga.
+  if (
+    /\bprimavera 1\b/.test(normalized) ||
+    normalized === "italia u20" ||
+    normalized.includes("supercoppa primavera")
+  ) {
+    return "Primavera 1";
+  }
+  if (/\bliga portugal 2\b/.test(normalized) || normalized === "portugal liga 2") {
+    return "Liga Portugal 2";
+  }
+  if (normalized === "portugal liga 3" || normalized === "liga 3") {
+    return "Liga 3";
+  }
+  if (/\bnext gen\b/.test(normalized) || normalized.includes("revelacao") || normalized === "portugal u23") {
+    return "Next Gen";
   }
   return "";
 }
@@ -952,7 +1086,10 @@ function CompetitionCalendarSection({
   return (
     <section className="calendar-competition-section">
       <div className="section-title">
-        <h2>{competition}</h2>
+        <div className="calendar-competition-heading">
+          <CompetitionLogo competition={competition} size="header" />
+          <h2>{competition}</h2>
+        </div>
         <span>{activeRound?.label || "Sin fase"}</span>
       </div>
 
@@ -1081,6 +1218,13 @@ export function CalendarView({
   const activeCompetition = availableCompetitions.includes(storedCompetition)
     ? storedCompetition
     : availableCompetitions[0];
+  const availableCountries = COUNTRIES.filter((country) =>
+    availableCompetitions.some((competition) => COMPETITION_COUNTRY[competition] === country.code),
+  );
+  const activeCountry = activeCompetition ? COMPETITION_COUNTRY[activeCompetition] : undefined;
+  const countryCompetitions = availableCompetitions.filter(
+    (competition) => COMPETITION_COUNTRY[competition] === activeCountry,
+  );
   const competitionGroups = useMemo(
     () =>
       Array.from(
@@ -1126,15 +1270,39 @@ export function CalendarView({
       {availableCompetitions.length > 0 && (
         <div className="calendar-league-bar">
           <div className="calendar-league-bar__row">
+            <span>País</span>
+            <div className="calendar-chip-group">
+              {availableCountries.map((country) => (
+                <button
+                  className={`calendar-country-chip${country.code === activeCountry ? " is-active" : ""}`}
+                  key={country.code}
+                  onClick={() => {
+                    const firstCompetition = availableCompetitions.find(
+                      (competition) => COMPETITION_COUNTRY[competition] === country.code,
+                    );
+                    if (firstCompetition && country.code !== activeCountry) {
+                      selectCompetition(firstCompetition);
+                    }
+                  }}
+                  type="button"
+                >
+                  <CountryFlag code={country.code} />
+                  {country.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="calendar-league-bar__row">
             <span>Liga</span>
             <div className="calendar-chip-group">
-              {availableCompetitions.map((competition) => (
+              {countryCompetitions.map((competition) => (
                 <button
-                  className={competition === activeCompetition ? "is-active" : ""}
+                  className={`calendar-league-chip${competition === activeCompetition ? " is-active" : ""}`}
                   key={competition}
                   onClick={() => selectCompetition(competition)}
                   type="button"
                 >
+                  <CompetitionLogo competition={competition} size="chip" />
                   {competition}
                 </button>
               ))}
