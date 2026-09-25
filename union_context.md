@@ -135,6 +135,7 @@ Utilidades pequeñas y puras. No hay una capa amplia de helpers compartidos; muc
   - Define las secciones principales:
     - `Dashboard`
     - `Jugadores`
+    - `Equipos`
     - `UScout`
     - `Informes`
     - `Calendario`
@@ -681,3 +682,20 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - Auditoría de solo lectura: `scripts/audit_player_identity_migration.py` (salida en `outputs/`, fuera de Git por contener datos personales).
 - Estado: informes, campogramas y UScout enlazados; Wyscout pendiente (623 matches `seguro` enlazables) y 85 registros sin datos suficientes para revisión manual.
 - El frontend todavía agrupa por nombre (p. ej. histórico de informes en `PlayersView`); pasar a `player_id` es la fase 5 de `docs/migracion_identidad_jugadores.md`.
+
+## 22. Equipos
+
+- Pestaña entre `Jugadores` y `UScout` (`TeamsView.tsx`). Usa `scopedReports`, así que respeta los roles: un `scout` solo ve equipos y jugadores de sus informes; `coordinator` y `admin` ven todo.
+- Cada equipo (agrupado por nombre normalizado) se asigna a **una liga**: la competición más frecuente de sus informes ignorando copas (`isCupCompetition`: Copa del Rey, Youth League, Mundial…); las demás salen como "También visto en".
+- País de la liga: el de `COMPETITION_COUNTRY` para las ligas del calendario, el prefijo `País (…)` del resto, `España` para RFEF/LaLiga/Juvenil y `Internacional` para torneos FIFA/UEFA.
+- Ligas plegadas por defecto (estado en `sessionStorage`: `teams.openLeagues`, `teams.groups`, `teams.sortByLeague`, `teams.country`); la búsqueda de equipo o jugador despliega las ligas con resultados.
+- Dentro de cada liga: chips de grupo (grupo del equipo según `calendar_matches`) y orden por jugadores con informe, mejor valorados (media A+=5 … D/E=1) o alfabético.
+- Barra de valoraciones con el número dentro de cada tramo (`1 A+`, `3 C`…), en tarjeta, cabecera de liga y panel del equipo.
+- Al pulsar un equipo se abre un panel lateral (hoja inferior en móvil) con próximos partidos y jugadores; al pulsar un jugador se abre en `Jugadores`.
+- Se probó una franja amarilla/gris en la cabecera negra de liga y se descartó: la cabecera se queda en negro liso.
+
+## 23. Módulo compartido de ligas, banderas y escudos
+
+- `frontend/src/lib/competitions.tsx`: ligas del calendario, `competitionKey`, `canonicalTeamName`, `TEAM_ALIASES`, logos de liga, banderas y utilidades de valoración. Lo usan `CalendarView` y `TeamsView`; no duplicar esa lógica en las vistas.
+- Banderas con `flag-icons` (SVG servidos por la app). Mapa país → ISO en `frontend/src/lib/countryFlags.json` (nombre normalizado sin tildes). `sync_scouting_reports_to_supabase.py` avisa de países de competiciones `País (…)` que no estén en ese JSON: añadirlos ahí.
+- Escudos de equipo: `sofascoreTeamImage(teamId)` con el id de `calendar_matches` (fallback: logo Wyscout, luego iniciales). Sofascore rechaza la imagen si llega el referer de nuestra web, por eso los `<img>` usan `referrerPolicy="no-referrer"`. Si algún día lo bloquean, la alternativa es cachear los escudos en Supabase Storage durante la sync del calendario.

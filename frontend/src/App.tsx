@@ -22,6 +22,7 @@ import { PlayersView } from "./views/PlayersView";
 import { ReportsView } from "./views/ReportsView";
 import { RankingsView } from "./views/RankingsView";
 import { ULabView } from "./views/ULabView";
+import { TeamsView } from "./views/TeamsView";
 import { UScoutView } from "./views/UScoutView";
 import { VIEWS, type ViewName } from "./views/viewConfig";
 
@@ -557,6 +558,17 @@ function AppShell({
           reports={scopedReports}
           allReports={scopedAllReports}
           seasons={seasons}
+        />
+      ) : null}
+      {activeView === "Equipos" ? (
+        <TeamsView
+          matches={matches}
+          objectiveMatches={objectiveMatches}
+          onOpenPlayer={(playerName) => {
+            setFocusedPlayerName(playerName);
+            setActiveView("Jugadores");
+          }}
+          reports={scopedReports}
         />
       ) : null}
       {activeView === "UScout" && selectedSeason ? (

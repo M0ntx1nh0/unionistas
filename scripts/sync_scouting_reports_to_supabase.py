@@ -11,7 +11,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +116,29 @@ def _dedupe_payloads(
         deduped.append(payload)
 
     return deduped, len(payloads) - len(deduped)
+
+
+COUNTRY_FLAGS_PATH = PROJECT_ROOT / "frontend" / "src" / "lib" / "countryFlags.json"
+
+
+def _normalize_country(value: str) -> str:
+    text = unicodedata.normalize("NFD", value)
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _countries_without_flag(competitions: pd.Series) -> list[str]:
+    """Paises de competiciones tipo "Polonia (2a Div)" sin bandera en la vista Equipos."""
+    try:
+        known = set(json.loads(COUNTRY_FLAGS_PATH.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return []
+    missing = set()
+    for competition in competitions.dropna().astype(str):
+        match = re.match(r"^\s*([^()]+?)\s*\(", competition)
+        if match and _normalize_country(match.group(1)) not in known:
+            missing.add(match.group(1).strip())
+    return sorted(missing)
 
 
 def _get_supabase_client():
@@ -238,6 +263,14 @@ def sync_scouting_reports(apply: bool, season_label: str) -> None:
     print(f"- Filas detectadas: {len(reports_df)}")
     print(f"- Informes con jugador: {len(valid_reports)}")
     print(f"- Jugadores unicos: {valid_reports['nombre_jugador'].nunique()}")
+    if "competicion" in valid_reports.columns:
+        missing_flags = _countries_without_flag(valid_reports["competicion"])
+        if missing_flags:
+            print(
+                "- AVISO paises sin bandera en la app: "
+                + ", ".join(missing_flags)
+                + " -> anadirlos a frontend/src/lib/countryFlags.json"
+            )
     print(f"- Scouts unicos: {valid_reports['ojeador'].nunique() if 'ojeador' in valid_reports.columns else 0}")
 
     if not apply:
