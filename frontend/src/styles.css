@@ -123,7 +123,8 @@ p {
 }
 
 .login-card p,
-.control-strip p {
+.control-strip p,
+.data-freshness {
   color: #5b5b55;
   line-height: 1.55;
 }
@@ -288,6 +289,33 @@ p {
 
 .control-strip p {
   margin: 0;
+}
+
+.data-freshness {
+  align-self: stretch;
+  border-left: 4px solid #e7d21a;
+  display: grid;
+  gap: 0.08rem;
+  padding: 0.18rem 0 0.18rem 0.85rem;
+}
+
+.data-freshness span {
+  color: #7b7110;
+  font-size: 0.7rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.data-freshness strong {
+  color: #161614;
+  font-size: 0.96rem;
+}
+
+.data-freshness small {
+  color: #6a6a63;
+  font-size: 0.76rem;
+  font-weight: 750;
 }
 
 .admin-sync-panel {

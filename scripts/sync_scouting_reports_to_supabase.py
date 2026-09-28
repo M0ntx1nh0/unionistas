@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ from scripts.player_identity import attach_player_ids  # noqa: E402
 
 DEFAULT_SEASON_LABEL = "2026/27"
 SOURCE_SYSTEM = "google_sheets_subjective"
+SYNC_SOURCE_NAME = "reports"
 
 
 def _clean_text(value: Any) -> str | None:
@@ -170,6 +172,24 @@ def _get_season_id(client, season_label: str) -> str:
     return str(rows[0]["id"])
 
 
+def _record_successful_sync(client, season_id: str, records_synced: int) -> None:
+    """Guarda la referencia visible de una sincronizacion completada."""
+    payload = {
+        "season_id": season_id,
+        "source_name": SYNC_SOURCE_NAME,
+        "last_successful_at": datetime.now(timezone.utc).isoformat(),
+        "records_synced": records_synced,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    try:
+        client.table("data_sync_runs").upsert(
+            payload,
+            on_conflict="season_id,source_name",
+        ).execute()
+    except Exception as error:  # noqa: BLE001 - El dato principal ya se ha sincronizado.
+        print(f"- AVISO: no se pudo registrar la fecha de sincronizacion: {error}")
+
+
 def _report_payload(
     row: pd.Series,
     season_id: str,
@@ -249,10 +269,6 @@ def sync_scouting_reports(apply: bool, season_label: str) -> None:
     reports_df = load_scouting_reports(season_label)
     source_config = _get_sheet_config(season_label)
 
-    if reports_df.empty:
-        print("No hay informes subjetivos para sincronizar.")
-        return
-
     reports_df = reports_df.reset_index(drop=True)
     valid_reports = reports_df[reports_df["nombre_jugador"].notna()].copy()
 
@@ -280,6 +296,11 @@ def sync_scouting_reports(apply: bool, season_label: str) -> None:
     client = _get_supabase_client()
     season_id = _get_season_id(client, season_label)
 
+    if reports_df.empty:
+        print("No hay informes subjetivos para sincronizar.")
+        _record_successful_sync(client, season_id, 0)
+        return
+
     payloads = [
         _report_payload(row, season_id, source_config, source_row_id=str(index))
         for index, row in valid_reports.iterrows()
@@ -299,6 +320,8 @@ def sync_scouting_reports(apply: bool, season_label: str) -> None:
             payloads,
             on_conflict="season_id,source_system,source_row_id",
         ).execute()
+
+    _record_successful_sync(client, season_id, len(payloads))
 
     print("Sincronizacion completada")
     print(f"- Informes sincronizados: {len(payloads)}")

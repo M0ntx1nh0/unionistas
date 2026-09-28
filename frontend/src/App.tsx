@@ -8,6 +8,7 @@ import type {
   CampogramPlayer,
   CampogramReport,
   DashboardCounts,
+  DataSyncRun,
   ObjectivePlayer,
   ObjectivePlayerMatch,
   PlayerSummary,
@@ -159,6 +160,17 @@ function buildPlayerSummaries(reports: ScoutingReport[]) {
   return Array.from(playersByName.values())
     .map(({ scoutNames: _scoutNames, latestTimestamp: _latestTimestamp, ...player }) => player)
     .sort((a, b) => a.player_name.localeCompare(b.player_name, "es"));
+}
+
+function formatSyncTimestamp(value: string | null) {
+  if (!value) return "Pendiente de la primera sincronizacion";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Fecha no disponible";
+  return new Intl.DateTimeFormat("es-ES", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Madrid",
+  }).format(parsed);
 }
 
 function AdminSyncPanel({ profile, season }: { profile: UserProfile; season: Season }) {
@@ -448,6 +460,7 @@ function AppShell({
   objectivePlayers,
   objectiveMatches,
   allReports,
+  reportsSyncRun,
   onUpdateCampogramPlayer,
 }: {
   session: Session;
@@ -467,6 +480,7 @@ function AppShell({
   objectivePlayers: ObjectivePlayer[];
   objectiveMatches: ObjectivePlayerMatch[];
   allReports: ScoutingReport[];
+  reportsSyncRun: DataSyncRun | null;
   onUpdateCampogramPlayer: (playerId: string, patch: Partial<CampogramPlayer>) => void;
 }) {
   const [focusedPlayerName, setFocusedPlayerName] = useState("");
@@ -538,10 +552,11 @@ function AppShell({
             ))}
           </select>
         </label>
-        <p>
-          Primera versión React conectada a Supabase con RLS. Lo que ves aquí ya
-          viene de la base nueva, no de Streamlit.
-        </p>
+        <div className="data-freshness" aria-live="polite">
+          <span>Base de informes · {selectedSeason?.label || "Temporada"}</span>
+          <strong>Actualizada: {formatSyncTimestamp(reportsSyncRun?.last_successful_at || null)}</strong>
+          {reportsSyncRun ? <small>{reportsSyncRun.records_synced} informes procesados</small> : null}
+        </div>
       </section>
 
       <AdminSyncPanel profile={profile} season={selectedSeason} />
@@ -645,6 +660,7 @@ export default function App() {
   const [campogramReports, setCampogramReports] = useState<CampogramReport[]>([]);
   const [objectivePlayers, setObjectivePlayers] = useState<ObjectivePlayer[]>([]);
   const [objectiveMatches, setObjectiveMatches] = useState<ObjectivePlayerMatch[]>([]);
+  const [reportsSyncRun, setReportsSyncRun] = useState<DataSyncRun | null>(null);
   const [activeView, setActiveView] = useState<ViewName>(() => {
     try {
       const stored = sessionStorage.getItem("app:activeView");
@@ -803,6 +819,7 @@ export default function App() {
         campogramRows,
         campogramPlayerRows,
         campogramReportRows,
+        reportsSyncRunRow,
       ] = await Promise.all([
         supabase
           .from("scouting_reports")
@@ -832,6 +849,12 @@ export default function App() {
           .order("display_order", { ascending: true }),
         fetchAllCampogramPlayers(selectedSeasonId, includeCampogramPipeline),
         fetchAllCampogramReports(selectedSeasonId),
+        supabase
+          .from("data_sync_runs")
+          .select("season_id,source_name,last_successful_at,records_synced")
+          .eq("season_id", selectedSeasonId)
+          .eq("source_name", "reports")
+          .maybeSingle(),
       ]);
 
       if (ignore) return;
@@ -890,6 +913,12 @@ export default function App() {
       setCampograms((campogramRows.data || []) as Campogram[]);
       setCampogramPlayers((campogramPlayerRows.data || []) as CampogramPlayer[]);
       setCampogramReports((campogramReportRows.data || []) as CampogramReport[]);
+      if (reportsSyncRunRow.error) {
+        console.warn("Estado de actualizacion de informes no disponible.", reportsSyncRunRow.error);
+        setReportsSyncRun(null);
+      } else {
+        setReportsSyncRun((reportsSyncRunRow.data || null) as DataSyncRun | null);
+      }
     }
 
     loadSeasonData();
@@ -942,6 +971,7 @@ export default function App() {
       objectivePlayers={objectivePlayers}
       objectiveMatches={objectiveMatches}
       allReports={allReports}
+      reportsSyncRun={reportsSyncRun}
       onUpdateCampogramPlayer={handleUpdateCampogramPlayer}
       players={players}
       profile={profile}

@@ -42,6 +42,13 @@ export type DashboardCounts = {
   campogramReports: number;
 };
 
+export type DataSyncRun = {
+  season_id: string;
+  source_name: string;
+  last_successful_at: string;
+  records_synced: number;
+};
+
 export type PlayerSummary = {
   player_id: string | null;
   player_name: string;
