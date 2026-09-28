@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type {
   ObjectivePlayer,
   ObjectivePlayerMatch,
@@ -918,6 +918,7 @@ export function PlayersView({
   const [selectedPlayerName, setSelectedPlayerName] = useState("");
   const [objectiveRadarMode, setObjectiveRadarMode] = useState<ObjectiveRadarMode>("specific");
   const [reportSeasonFilter, setReportSeasonFilter] = useState("all");
+  const pendingFocusedPlayerName = useRef<string | null>(null);
 
   const competitions = Array.from(
     new Set(players.map((player) => player.competition || "Sin competición")),
@@ -971,6 +972,8 @@ export function PlayersView({
       (player) => normalizeKey(player.player_name) === normalizeKey(focusPlayerName),
     );
     if (!target) return;
+    // La lista puede conservar filtros de la vista anterior: no perder la ficha solicitada.
+    pendingFocusedPlayerName.current = target.player_name;
     setSearch("");
     setCompetitionFilter("Todas");
     setTeamFilter("Todos");
@@ -981,6 +984,12 @@ export function PlayersView({
   useEffect(() => {
     if (!filteredPlayers.length) {
       setSelectedPlayerName("");
+      return;
+    }
+    const pendingFocusedPlayer = pendingFocusedPlayerName.current;
+    if (pendingFocusedPlayer && filteredPlayers.some((player) => player.player_name === pendingFocusedPlayer)) {
+      pendingFocusedPlayerName.current = null;
+      setSelectedPlayerName(pendingFocusedPlayer);
       return;
     }
     if (!filteredPlayers.some((player) => player.player_name === selectedPlayerName)) {
