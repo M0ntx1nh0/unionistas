@@ -270,6 +270,9 @@ def sync_scouting_reports(apply: bool, season_label: str) -> None:
     source_config = _get_sheet_config(season_label)
 
     reports_df = reports_df.reset_index(drop=True)
+    if "nombre_jugador" not in reports_df.columns:
+        # Pestaña sin cabeceras: se trata como "sin informes" en lugar de fallar.
+        reports_df = reports_df.iloc[0:0].assign(nombre_jugador=pd.Series(dtype=object))
     valid_reports = reports_df[reports_df["nombre_jugador"].notna()].copy()
 
     print("Resumen informes subjetivos")
