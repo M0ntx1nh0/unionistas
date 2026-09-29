@@ -2,9 +2,10 @@ name: Actualizar informes 2026/27 diariamente
 
 on:
   schedule:
-    # GitHub Actions usa UTC. Se lanzan ambas opciones para cubrir CET/CEST;
-    # el paso de comprobacion solo sincroniza cuando son las 06:00 en Madrid.
-    - cron: "0 4,5 * * *"
+    # GitHub Actions usa UTC. Evitamos el minuto 00 porque su planificador
+    # puede retrasar u omitir ejecuciones en esa franja. Ambas opciones cubren
+    # CET/CEST y el paso siguiente solo sincroniza a las 06:07 en Madrid.
+    - cron: "7 4,5 * * *"
   workflow_dispatch:
 
 jobs:
@@ -18,7 +19,7 @@ jobs:
         id: madrid_time
         run: |
           CURRENT_HOUR="$(TZ=Europe/Madrid date +%H)"
-          echo "Hora actual en Madrid: ${CURRENT_HOUR}:00"
+          echo "Hora actual en Madrid: $(TZ=Europe/Madrid date +%H:%M)"
           if [ "$CURRENT_HOUR" = "06" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_sync=true" >> "$GITHUB_OUTPUT"
           else

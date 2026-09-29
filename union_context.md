@@ -699,3 +699,77 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - `frontend/src/lib/competitions.tsx`: ligas del calendario, `competitionKey`, `canonicalTeamName`, `TEAM_ALIASES`, logos de liga, banderas y utilidades de valoración. Lo usan `CalendarView` y `TeamsView`; no duplicar esa lógica en las vistas.
 - Banderas con `flag-icons` (SVG servidos por la app). Mapa país → ISO en `frontend/src/lib/countryFlags.json` (nombre normalizado sin tildes). `sync_scouting_reports_to_supabase.py` avisa de países de competiciones `País (…)` que no estén en ese JSON: añadirlos ahí.
 - Escudos de equipo: `sofascoreTeamImage(teamId)` con el id de `calendar_matches` (fallback: logo Wyscout, luego iniciales). Sofascore rechaza la imagen si llega el referer de nuestra web, por eso los `<img>` usan `referrerPolicy="no-referrer"`. Si algún día lo bloquean, la alternativa es cachear los escudos en Supabase Storage durante la sync del calendario.
+
+## 24. Sincronización operativa de informes 2026/27
+
+- La sincronización manual desde el botón de administración y la automatizada
+  trabajan sobre `2026/27`; no sobrescriben los informes históricos `2025/26`.
+- Workflow diario: `.github/workflows/sync-reports-daily.yml`.
+  - Se ejecuta todos los días alrededor de las **06:07 hora de Madrid**,
+    manteniendo el horario tanto en invierno como en verano mediante dos
+    disparadores UTC y una comprobación de zona horaria. Se evita el minuto
+    `00` porque GitHub Actions puede retrasar u omitir trabajos programados
+    en esa franja de mayor carga.
+  - También admite ejecución manual desde GitHub Actions.
+  - Requiere el secreto de GitHub `STREAMLIT_SECRETS_TOML_B64`, que debe
+    contener el `secrets.toml` actualizado, incluida la clave
+    `google_sheet_2026_27`.
+- Tras cada sincronización correcta, el script
+  `scripts/sync_scouting_reports_to_supabase.py` guarda un registro en
+  `data_sync_runs` (migración `013_data_sync_runs.sql`).
+- La barra superior de la app muestra a todos los roles la última fecha/hora
+  de actualización en Madrid y el número de informes sincronizados para la
+  temporada activa.
+- El aviso de GitHub sobre Node 20 forzado a Node 24 y el próximo cambio de
+  `ubuntu-latest` es informativo: la acción actual está funcionando y no exige
+  ninguna intervención inmediata.
+
+## 25. UScout: estado implementado y reglas activas
+
+- El módulo ya está conectado a Supabase mediante las tablas `uscout_*` de la
+  migración `009_uscout_workspace.sql`.
+- La shortlist usa jugadores de la base de la **temporada activa** y conserva
+  sus notas, prioridad y estado dentro de UScout: esas notas no se escriben ni
+  sustituyen los informes oficiales.
+- Los filtros de shortlist deben seguir este orden: `Competición`, `Equipo`,
+  `Posición` y `Jugador`, además de la búsqueda textual en la base.
+- La presentación objetivo de la shortlist es una lista agrupada por familia
+  genérica: porteros, defensas, centrocampistas y delanteros; no tarjetas
+  independientes. Cada familia tendrá un color propio.
+- Los campogramas personales restringen los candidatos a su familia de
+  posición (portero/defensa/centrocampista/delantero), permiten añadir y quitar
+  alternativas y guardan hasta tres candidatos por posición en el once
+  visual. Un scout puede crear hasta seis campogramas.
+- La exportación para `admin` y `coordinator` incluye:
+  - shortlist personal en PDF vertical, con portada Unionistas, fecha,
+    `Short List Personal`, nombre del scout y `Secretaría Técnica USCF`;
+  - selección de uno o varios campogramas personales en PDF vertical, con
+    portada equivalente y título `Campogramas`.
+- Las mejoras futuras que siguen pendientes son: cruce con calendario,
+  gestión definitiva de jugadores manuales, bandeja/banquillo, arrastre y las
+  vistas tácticas 2D/3D documentadas en `docs/temporada_26_27_pendientes.md`.
+
+## 26. Navegación Equipos -> Jugadores
+
+- `TeamsView` abre la ficha de un jugador al pulsar una fila del panel de
+  equipo.
+- Corregido el caso en el que `PlayersView` recibía el jugador solicitado pero
+  un efecto de filtros lo reemplazaba por el primer jugador de la lista.
+- La corrección conserva temporalmente el nombre solicitado mediante `useRef`
+  hasta que el listado filtrado pueda seleccionar esa ficha.
+- El cambio está publicado en GitHub en el commit `5372a95` (`Preserve
+  selected player from teams`).
+
+## 27. Checklist al retomar el proyecto
+
+1. Leer primero este archivo y `docs/temporada_26_27_pendientes.md`.
+2. Confirmar la temporada activa antes de revisar cualquier dato.
+3. Para cambios de datos, distinguir siempre entre:
+   - informes y calendario de `2026/27` (operativos);
+   - histórico `2025/26` (solo consulta);
+   - Wyscout y campogramas de la nueva temporada (todavía por cargar).
+4. No incluir en commits los assets nuevos de `assets/Logos/` salvo que se
+   solicite expresamente: actualmente hay logos locales sin seguimiento de Git.
+5. Antes de cambios de identidad de jugadores, consultar
+   `docs/migracion_identidad_jugadores.md`; la migración es incremental y no
+   debe borrar ni reescribir relaciones históricas.

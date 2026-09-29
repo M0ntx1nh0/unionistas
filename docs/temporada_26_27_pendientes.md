@@ -78,8 +78,10 @@ cerrados.
   `4-3-3`, `4-2-3-1` y `4-4-2`, jugadores no repetidos y guardado automático.
 - El scout edita únicamente su espacio; el coordinador consulta los espacios
   de los scouts; el administrador puede editarlos.
-- Pendiente de fases posteriores: calendario, varios equipos por scout,
-  enlace definitivo de jugadores manuales, arrastre, banquillo y exportación.
+- Completada la exportación PDF vertical de shortlist y campogramas personales
+  para `admin` y `coordinator`.
+- Pendiente de fases posteriores: calendario, enlace definitivo de jugadores
+  manuales, arrastre, banquillo y vistas tácticas avanzadas.
 
 ### 1. Ubicación y permisos
 
