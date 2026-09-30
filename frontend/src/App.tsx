@@ -204,9 +204,24 @@ function AdminSyncPanel({ profile, season }: { profile: UserProfile; season: Sea
     });
 
     if (error) {
+      const response = (error as { context?: Response }).context;
+      const payload = response
+        ? await response
+            .clone()
+            .json()
+            .catch(() => null)
+        : null;
+      const errorDetail =
+        payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string"
+          ? payload.error
+          : error.message;
+      const providerDetail =
+        payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string"
+          ? payload.detail
+          : null;
       setMessage({
         type: "error",
-        text: `No se pudo lanzar la sincronizacion: ${error.message}`,
+        text: `No se pudo lanzar la sincronizacion: ${errorDetail}${providerDetail ? ` (${providerDetail})` : ""}`,
       });
       setIsLaunching(false);
       return;

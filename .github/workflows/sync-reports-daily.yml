@@ -3,9 +3,10 @@ name: Actualizar informes 2026/27 diariamente
 on:
   schedule:
     # GitHub Actions usa UTC. Evitamos el minuto 00 porque su planificador
-    # puede retrasar u omitir ejecuciones en esa franja. Ambas opciones cubren
-    # CET/CEST y el paso siguiente solo sincroniza a las 06:07 en Madrid.
-    - cron: "7 4,5 * * *"
+    # puede retrasar u omitir ejecuciones en esa franja. Hay un cron para
+    # verano y otro para invierno; el paso siguiente escoge solo el correcto.
+    - cron: "7 4 * * *"
+    - cron: "7 5 * * *"
   workflow_dispatch:
 
 jobs:
@@ -17,10 +18,19 @@ jobs:
     steps:
       - name: Comprobar hora peninsular
         id: madrid_time
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE_EXPRESSION: ${{ github.event.schedule }}
         run: |
-          CURRENT_HOUR="$(TZ=Europe/Madrid date +%H)"
+          MADRID_OFFSET="$(TZ=Europe/Madrid date +%z)"
           echo "Hora actual en Madrid: $(TZ=Europe/Madrid date +%H:%M)"
-          if [ "$CURRENT_HOUR" = "06" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "Disparador programado: ${SCHEDULE_EXPRESSION:-manual}"
+
+          # Si GitHub inicia el runner con retraso, elegimos por el cron que lo
+          # originó y no por la hora real de arranque. Así no se pierde la sync.
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] || \
+             { [ "$MADRID_OFFSET" = "+0200" ] && [ "$SCHEDULE_EXPRESSION" = "7 4 * * *" ]; } || \
+             { [ "$MADRID_OFFSET" = "+0100" ] && [ "$SCHEDULE_EXPRESSION" = "7 5 * * *" ]; }; then
             echo "should_sync=true" >> "$GITHUB_OUTPUT"
           else
             echo "should_sync=false" >> "$GITHUB_OUTPUT"
@@ -59,4 +69,4 @@ jobs:
 
       - name: Skip duplicated timezone trigger
         if: steps.madrid_time.outputs.should_sync != 'true'
-        run: 'echo "No se sincroniza: no son las 06:00 en Europe/Madrid."'
+        run: 'echo "No se sincroniza: este cron no corresponde al horario actual de Madrid."'

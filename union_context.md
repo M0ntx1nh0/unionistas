@@ -705,11 +705,14 @@ Si en futuras tareas necesitamos reducir todavía más contexto, este documento 
 - La sincronización manual desde el botón de administración y la automatizada
   trabajan sobre `2026/27`; no sobrescriben los informes históricos `2025/26`.
 - Workflow diario: `.github/workflows/sync-reports-daily.yml`.
-  - Se ejecuta todos los días alrededor de las **06:07 hora de Madrid**,
+  - Se programa todos los días alrededor de las **06:07 hora de Madrid**,
     manteniendo el horario tanto en invierno como en verano mediante dos
-    disparadores UTC y una comprobación de zona horaria. Se evita el minuto
-    `00` porque GitHub Actions puede retrasar u omitir trabajos programados
-    en esa franja de mayor carga.
+    cron UTC independientes (`04:07` en CEST y `05:07` en CET). Se evita el
+    minuto `00` porque GitHub Actions puede retrasar u omitir trabajos
+    programados en esa franja de mayor carga.
+  - Si GitHub inicia un runner con retraso, el workflow usa la expresión cron
+    que lo originó y el desfase CEST/CET para sincronizar una vez, sin
+    descartarla por la hora real de arranque.
   - También admite ejecución manual desde GitHub Actions.
   - Requiere el secreto de GitHub `STREAMLIT_SECRETS_TOML_B64`, que debe
     contener el `secrets.toml` actualizado, incluida la clave
